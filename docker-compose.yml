@@ -1,0 +1,11 @@
+version: '2'
+
+services:
+  db:
+    image: docker.io/postgres:9.5
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRESQL_ADMIN_PASSWORD: secret
+    networks:
+      - default
