@@ -12,6 +12,22 @@ import jwt
 from flask import Flask, request, session
 from flask import g
 from flask_cors import CORS, cross_origin
+import nltk
+import polib
+
+
+PO_METADATA = {
+    'Project-Id-Version': '1.0',
+    'Report-Msgid-Bugs-To': 'tfbfgroup@googlegroups.com',
+    'POT-Creation-Date': '2007-10-18 14:00+0100',
+    'PO-Revision-Date': '2007-10-18 14:00+0100',
+    'Last-Translator': 'you <you@example.com>',
+    'Language-Team': 'English <yourteam@example.com>',
+    'MIME-Version': '1.0',
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Content-Transfer-Encoding': '8bit',
+}
+
 
 app = Flask(__name__)
 CORS(app)
@@ -217,9 +233,30 @@ def sources():
 
 
 @app.route("/v1/tokenwords/<string:sourcelang>", methods=["GET"])
-@check_token
+#@check_token
 def tokenwords(sourcelang):
-    return '{}\n'
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("select st.name, st.content from sourcetexts st left join sources s on st.source_id = s.id WHERE s.language = %s", (sourcelang,))
+    out = []
+    for rst in cursor.fetchall():
+        print(rst[0], rst[1])
+        out.append(rst[1])
+    cursor.close()
+    connection.commit()
+    token_list = nltk.word_tokenize(" ".join(out))
+    token_set = set([x.encode('utf-8') for x in token_list])
+    po = polib.POFile("", encoding="utf-8")
+    po.metadata = PO_METADATA
+    for t in token_set:
+        entry = polib.POEntry(
+            msgid=t.decode("utf-8"),
+            msgstr='',
+            )
+        po.append(entry)
+    tw = {}
+    tw["tokenwords"] = str(po)
+    return json.dumps(tw)
 
 
 @app.route("/v1/translations", methods=["POST"])
