@@ -179,7 +179,6 @@ def new_key():
         cursor.execute("UPDATE keys SET access_id=%s, key_hash=%s, key_salt=%s WHERE user_id=%s", (access_id, key_hash, key_salt, user_id))
     else:
         cursor.execute("INSERT INTO keys (access_id, key_hash, key_salt, user_id) VALUES (%s, %s, %s, %s)", (access_id, key_hash, key_salt, user_id))
-    #import pdb;pdb.set_trace()
     cursor.close()
     connection.commit()
     return '{"id": "%s", "key": "%s"}\n' % (access_id, key)
@@ -191,6 +190,27 @@ def new_registration2(code):
     cursor.execute("SELECT email FROM users WHERE verification_code = %s AND email_verified = False", (code,))
     if cursor.fetchone():
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
+    cursor.close()
+    connection.commit()
+    return '{}\n'
+
+
+@app.route("/v1/sources", methods=["POST"])
+@check_token
+def sources():
+    req = request.get_json(True)
+    language = req["language"]
+    content = req["content"]
+
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("INSERT INTO sources (language) VALUES (%s) RETURNING id", (language,))
+    source_id = cursor.fetchone()[0]
+    cursor.close()
+    cursor = connection.cursor()
+    for k, v in content.items():
+        cursor.execute("INSERT INTO sourcetexts (name, content, source_id) VALUES (%s, %s, %s)", (k, v, source_id))
+
     cursor.close()
     connection.commit()
     return '{}\n'

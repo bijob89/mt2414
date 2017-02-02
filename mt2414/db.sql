@@ -20,3 +20,33 @@ CREATE TABLE keys (
 	deleted_at timestamp with time zone,
 	user_id BIGINT REFERENCES users(id) NOT NULL
 );
+
+CREATE TABLE sources (
+	id BIGSERIAL PRIMARY KEY,
+	language TEXT UNIQUE NOT NULL,
+	created_at timestamp with time zone,
+	updated_at timestamp with time zone,
+	deleted_at timestamp with time zone
+);
+
+
+CREATE TABLE sourcetexts (
+	id BIGSERIAL PRIMARY KEY,
+	name TEXT NOT NULL,
+	content TEXT NOT NULL,
+	created_at timestamp with time zone,
+	updated_at timestamp with time zone,
+	deleted_at timestamp with time zone,
+	source_id BIGINT REFERENCES sources(id) NOT NULL
+);
+
+CREATE TABLE translationtexts (
+	id BIGSERIAL PRIMARY KEY,
+	name TEXT NOT NULL,
+	content TEXT NOT NULL,
+	language TEXT NOT NULL,
+	created_at timestamp with time zone,
+	updated_at timestamp with time zone,
+	deleted_at timestamp with time zone,
+	source_id BIGINT REFERENCES sources(id) NOT NULL
+);
