@@ -233,26 +233,24 @@ def sources():
 
 
 @app.route("/v1/tokenwords/<string:sourcelang>", methods=["GET"])
-#@check_token
+@check_token
 def tokenwords(sourcelang):
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("select st.name, st.content from sourcetexts st left join sources s on st.source_id = s.id WHERE s.language = %s", (sourcelang,))
     out = []
     for rst in cursor.fetchall():
-        print(rst[0], rst[1])
         out.append(rst[1])
     cursor.close()
     connection.commit()
     token_list = nltk.word_tokenize(" ".join(out))
     token_set = set([x.encode('utf-8') for x in token_list])
-    po = polib.POFile("", encoding="utf-8")
-    po.metadata = PO_METADATA
+    words = []
     for t in token_set:
-        entry = polib.POEntry(
-            msgid=t.decode("utf-8"),
-            msgstr='',
-            )
+        entry = {
+                "msgid": t.decode("utf-8"),
+                "msgstr": '',
+                }
         po.append(entry)
     tw = {}
     tw["tokenwords"] = str(po)
@@ -262,8 +260,30 @@ def tokenwords(sourcelang):
 @app.route("/v1/translations", methods=["POST"])
 @check_token
 def translations():
-    return '{}\n'
-
+    req = request.get_json(True)
+    sourcelang = req["sourcelang"]
+    #targetlang = req["targetlang"]
+    tokens = req["tokenwords"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("select st.name, st.content from sourcetexts st left join sources s on st.source_id = s.id WHERE s.language = %s", (sourcelang,))
+    out = []
+    for rst in cursor.fetchall():
+        out.append((rst[0], rst[1]))
+    tr = {}
+    for name, book in rst:
+        out_text_lines = []
+        for line in book.split("\n"):
+            line_words = nltk.word_tokenize(line.decode('utf8'))
+            new_line_words = []
+            for word in line_words:
+                new_line_words.append(tokens.get(word, word))
+            out_line = " ".join(new_line_words)
+            out_text_lines.append(out_line)
+        
+        out_text = "\n".join(out_text_lines)
+        tr[name] = out_text
+    return json.dumps(tr)
 
 @app.route("/v1/corrections", methods=["POST"])
 @check_token
