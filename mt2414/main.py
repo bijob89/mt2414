@@ -258,7 +258,7 @@ def tokenwords(sourcelang):
 
 
 @app.route("/v1/translations", methods=["POST"])
-@check_token
+#@check_token
 def translations():
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
@@ -266,12 +266,13 @@ def translations():
     tokens = req["tokenwords"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("select st.name, st.content from sourcetexts st left join sources s on st.source_id = s.id WHERE s.language = %s", (sourcelang,))
+    cursor.execute("select st.name, st.content, st.source_id from sourcetexts st left join sources s on st.source_id = s.id WHERE s.language = %s", (sourcelang,))
     out = []
     for rst in cursor.fetchall():
         out.append((rst[0], rst[1]))
+    source_id = rst[2]
     tr = {}
-    for name, book in rst:
+    for name, book in out:
         out_text_lines = []
         for line in book.split("\n"):
             line_words = nltk.word_tokenize(line.decode('utf8'))
@@ -283,6 +284,7 @@ def translations():
         
         out_text = "\n".join(out_text_lines)
         tr[name] = out_text
+        cr.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
     return json.dumps(tr)
 
 @app.route("/v1/corrections", methods=["POST"])
