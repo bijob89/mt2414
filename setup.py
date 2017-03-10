@@ -12,6 +12,8 @@ setup(
         "PyJWT",
         "Flask-Cors",
         "requests",
+        "psycopg2",
         "scrypt",
+        "gunicorn",
         ],
 )
