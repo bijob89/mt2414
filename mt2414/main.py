@@ -91,7 +91,7 @@ def new_registration():
     payload = {
         "to": {email: ""},
         "from": ["noreply@mt2414.in","Mt. 24:14"],
-        "subject": "MT2414 - Verify email address",
+        "subject": "MT2414 - Please verify your email address",
         "html": body,
         }
     connection = get_db()
@@ -281,7 +281,7 @@ def translations():
                 new_line_words.append(tokens.get(word, word))
             out_line = " ".join(new_line_words)
             out_text_lines.append(out_line)
-        
+
         out_text = "\n".join(out_text_lines)
         tr[name] = out_text
         cr.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
