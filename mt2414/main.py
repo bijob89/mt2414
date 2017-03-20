@@ -58,11 +58,11 @@ def close_db(error):
 
 @app.route("/v1/auth", methods=["POST"])
 def auth():
-    username = request.form["username"]
+    email = request.form["username"]
     password = request.form["password"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (username,))
+    cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (email,))
     rst = cursor.fetchone()
     if not rst:
         return '{}'
@@ -70,7 +70,7 @@ def auth():
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
     if password_hash == password_hash_new:
-        access_token = jwt.encode({'sub': username}, jwt_hs256_secret, algorithm='HS256')
+        access_token = jwt.encode({'sub': email}, jwt_hs256_secret, algorithm='HS256')
         return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
     return '{}'
 
