@@ -62,17 +62,21 @@ def auth():
     password = request.form["password"]
     connection = get_db()
     cursor = connection.cursor()
+    cursor.execute("SELECT email FROM users WHERE  email = %s",(email,))
+    est = cursor.fetchone()
+    if not est:
+        return 'Invalid email\n'
     cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (email,))
     rst = cursor.fetchone()
     if not rst:
-        return '{}'
+        return 'email is not verified\n'
     password_hash = rst[0].hex()
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
     if password_hash == password_hash_new:
         access_token = jwt.encode({'sub': email}, jwt_hs256_secret, algorithm='HS256')
         return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
-    return '{}'
+    return 'Invalid Password\n'
 
 
 @app.route("/v1/registrations", methods=["POST"])
