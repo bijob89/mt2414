@@ -65,18 +65,18 @@ def auth():
     cursor.execute("SELECT email FROM users WHERE  email = %s",(email,))
     est = cursor.fetchone()
     if not est:
-        return 'Invalid email\n'
+        return '{success:false, message:"Invalid email"}'
     cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (email,))
     rst = cursor.fetchone()
     if not rst:
-        return 'email is not verified\n'
+        return '{success:false, message:"email is not verified"}'
     password_hash = rst[0].hex()
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
     if password_hash == password_hash_new:
         access_token = jwt.encode({'sub': email}, jwt_hs256_secret, algorithm='HS256')
         return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
-    return 'Invalid Password\n'
+    return '{success:false, message:"Invalid Password"}'
 
 
 @app.route("/v1/registrations", methods=["POST"])
@@ -106,14 +106,14 @@ def new_registration():
     cursor = connection.cursor()
     cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
     if cursor.fetchone():
-        return "email already exists\n"
+        return '{success:false, message:"email already exists"}'
     else:
         cursor.execute("INSERT INTO users (email, verification_code, password_hash, password_salt, created_at) VALUES (%s, %s, %s, %s, current_timestamp)",
                 (email, verification_code, password_hash, password_salt))
     cursor.close()
     connection.commit()
     resp = requests.post(url, data=json.dumps(payload), headers=headers)
-    return 'verification email sent\n'
+    return '{success:true, message:"verification email sent"}'
 
 
 class TokenError(Exception):
@@ -212,7 +212,7 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    return 'email verified\n'
+    return '{success:true, message:"email verified"}'
 
 
 @app.route("/v1/sources", methods=["POST"])
@@ -233,7 +233,7 @@ def sources():
 
     cursor.close()
     connection.commit()
-    return 'Completed Successfully\n'
+    return '{success:false, message:"Completed Successfully"}'
 
 
 @app.route("/v1/tokenwords/<string:sourcelang>", methods=["GET"])
