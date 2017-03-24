@@ -106,14 +106,14 @@ def new_registration():
     cursor = connection.cursor()
     cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
     if cursor.fetchone():
-        return "{}\n"
+        return "email already exists\n"
     else:
         cursor.execute("INSERT INTO users (email, verification_code, password_hash, password_salt, created_at) VALUES (%s, %s, %s, %s, current_timestamp)",
                 (email, verification_code, password_hash, password_salt))
     cursor.close()
     connection.commit()
     resp = requests.post(url, data=json.dumps(payload), headers=headers)
-    return '{}\n'
+    return 'verification email sent\n'
 
 
 class TokenError(Exception):
@@ -212,7 +212,7 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    return '{}\n'
+    return 'email verified\n'
 
 
 @app.route("/v1/sources", methods=["POST"])
@@ -233,7 +233,7 @@ def sources():
 
     cursor.close()
     connection.commit()
-    return '{}\n'
+    return 'Completed Successfully\n'
 
 
 @app.route("/v1/tokenwords/<string:sourcelang>", methods=["GET"])
@@ -241,7 +241,7 @@ def sources():
 def tokenwords(sourcelang):
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("select st.name, st.content from sourcetexts st left join sources s on st.source_id = s.id WHERE s.language = %s", (sourcelang,))
+    cursor.execute("SELECT st.name, st.content FROM sourcetexts st LEFT JOIN sources s ON st.source_id = s.id WHERE s.language = %s", (sourcelang,))
     out = []
     for rst in cursor.fetchall():
         out.append(rst[1])
@@ -255,9 +255,9 @@ def tokenwords(sourcelang):
                 "msgid": t.decode("utf-8"),
                 "msgstr": '',
                 }
-        po.append(entry)
+        words.append(entry)
     tw = {}
-    tw["tokenwords"] = str(po)
+    tw["tokenwords"] = str(words)
     return json.dumps(tw)
 
 
