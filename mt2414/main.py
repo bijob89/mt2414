@@ -69,14 +69,14 @@ def auth():
     cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (email,))
     rst = cursor.fetchone()
     if not rst:
-        return '{success:false, message:"email is not verified"}'
+        return '{success:false, message:"Email is not Verified"}'
     password_hash = rst[0].hex()
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
     if password_hash == password_hash_new:
         access_token = jwt.encode({'sub': email}, jwt_hs256_secret, algorithm='HS256')
         return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
-    return '{success:false, message:"Invalid Password"}'
+    return '{success:false, message:"Incorrect Password"}'
 
 
 @app.route("/v1/registrations", methods=["POST"])
@@ -106,14 +106,14 @@ def new_registration():
     cursor = connection.cursor()
     cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
     if cursor.fetchone():
-        return '{success:false, message:"email already exists"}'
+        return '{success:false, message:"Email Already Exists"}'
     else:
         cursor.execute("INSERT INTO users (email, verification_code, password_hash, password_salt, created_at) VALUES (%s, %s, %s, %s, current_timestamp)",
                 (email, verification_code, password_hash, password_salt))
     cursor.close()
     connection.commit()
     resp = requests.post(url, data=json.dumps(payload), headers=headers)
-    return '{success:true, message:"verification email sent"}'
+    return '{success:true, message:"Verification Email Sent"}'
 
 
 class TokenError(Exception):
@@ -132,7 +132,7 @@ class TokenError(Exception):
 
 @app.errorhandler(TokenError)
 def auth_exception_handler(error):
-    return 'Authentication failed\n', 401
+    return 'Authentication Failed\n', 401
 
 def check_token(f):
     @wraps(f)
@@ -212,7 +212,7 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    return '{success:true, message:"email verified"}'
+    return '{success:true, message:"Email Verified"}'
 
 
 @app.route("/v1/sources", methods=["POST"])
@@ -233,7 +233,19 @@ def sources():
 
     cursor.close()
     connection.commit()
-    return '{success:false, message:"Completed Successfully"}'
+    return '{success:true, message:"Completed Successfully"}'
+
+@app.route("/v1/get_languages", methods=["POST"])
+@check_token
+def availableslan():
+    connection =get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT language FROM sources")
+    l=cursor.fetchall()
+    #for lst in l:
+    return str(l)
+    cursor.close()
+
 
 
 @app.route("/v1/tokenwords/<string:sourcelang>", methods=["GET"])
@@ -258,6 +270,7 @@ def tokenwords(sourcelang):
         words.append(entry)
     tw = {}
     tw["tokenwords"] = str(words)
+    #cursor.execute("INSERT INTO translationtexts (content) VALUES (%s)", tw)
     return json.dumps(tw)
 
 
@@ -288,7 +301,7 @@ def translations():
 
         out_text = "\n".join(out_text_lines)
         tr[name] = out_text
-        cr.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
+        cursor.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
     return json.dumps(tr)
 
 @app.route("/v1/corrections", methods=["POST"])
