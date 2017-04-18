@@ -58,21 +58,25 @@ def close_db(error):
 
 @app.route("/v1/auth", methods=["POST"])
 def auth():
-    username = request.form["username"]
+    email = request.form["username"]
     password = request.form["password"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (username,))
+    cursor.execute("SELECT email FROM users WHERE  email = %s",(email,))
+    est = cursor.fetchone()
+    if not est:
+        return '{success:false, message:"Invalid email"}'
+    cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (email,))
     rst = cursor.fetchone()
     if not rst:
-        return '{}'
+        return '{success:false, message:"Email is not Verified"}'
     password_hash = rst[0].hex()
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
     if password_hash == password_hash_new:
-        access_token = jwt.encode({'sub': username}, jwt_hs256_secret, algorithm='HS256')
+        access_token = jwt.encode({'sub': email}, jwt_hs256_secret, algorithm='HS256')
         return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
-    return '{}'
+    return '{success:false, message:"Incorrect Password"}'
 
 
 @app.route("/v1/registrations", methods=["POST"])
@@ -102,14 +106,14 @@ def new_registration():
     cursor = connection.cursor()
     cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
     if cursor.fetchone():
-        return "{}\n"
+        return '{success:false, message:"Email Already Exists"}'
     else:
         cursor.execute("INSERT INTO users (email, verification_code, password_hash, password_salt, created_at) VALUES (%s, %s, %s, %s, current_timestamp)",
                 (email, verification_code, password_hash, password_salt))
     cursor.close()
     connection.commit()
     resp = requests.post(url, data=json.dumps(payload), headers=headers)
-    return '{}\n'
+    return '{success:true, message:"Verification Email Sent"}'
 
 @app.route("/v1/resetpassword", methods = ["POST"])
 def reset_password():
@@ -172,7 +176,7 @@ class TokenError(Exception):
 
 @app.errorhandler(TokenError)
 def auth_exception_handler(error):
-    return 'Authentication failed\n', 401
+    return 'Authentication Failed\n', 401
 
 def check_token(f):
     @wraps(f)
@@ -252,7 +256,7 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    return '{}\n'
+    return '{success:true, message:"Email Verified"}'
 
 
 @app.route("/v1/sources", methods=["POST"])
@@ -273,7 +277,19 @@ def sources():
 
     cursor.close()
     connection.commit()
-    return '{}\n'
+    return '{success:true, message:"Completed Successfully"}'
+
+@app.route("/v1/get_languages", methods=["POST"])
+@check_token
+def availableslan():
+    connection =get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT language FROM sources")
+    l=cursor.fetchall()
+    #for lst in l:
+    return str(l)
+    cursor.close()
+
 
 
 @app.route("/v1/tokenwords/<string:sourcelang>", methods=["GET"])
@@ -281,7 +297,7 @@ def sources():
 def tokenwords(sourcelang):
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("select st.name, st.content from sourcetexts st left join sources s on st.source_id = s.id WHERE s.language = %s", (sourcelang,))
+    cursor.execute("SELECT st.name, st.content FROM sourcetexts st LEFT JOIN sources s ON st.source_id = s.id WHERE s.language = %s", (sourcelang,))
     out = []
     for rst in cursor.fetchall():
         out.append(rst[1])
@@ -295,9 +311,10 @@ def tokenwords(sourcelang):
                 "msgid": t.decode("utf-8"),
                 "msgstr": '',
                 }
-        po.append(entry)
+        words.append(entry)
     tw = {}
-    tw["tokenwords"] = str(po)
+    tw["tokenwords"] = str(words)
+    #cursor.execute("INSERT INTO translationtexts (content) VALUES (%s)", tw)
     return json.dumps(tw)
 
 
@@ -328,7 +345,7 @@ def translations():
 
         out_text = "\n".join(out_text_lines)
         tr[name] = out_text
-        cr.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
+        cursor.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
     return json.dumps(tr)
 
 @app.route("/v1/corrections", methods=["POST"])
