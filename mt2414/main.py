@@ -314,7 +314,6 @@ def tokenwords(sourcelang):
         words.append(entry)
     tw = {}
     tw["tokenwords"] = str(words)
-    #cursor.execute("INSERT INTO translationtexts (content) VALUES (%s)", tw)
     return json.dumps(tw)
 
 
@@ -336,7 +335,7 @@ def translations():
     for name, book in out:
         out_text_lines = []
         for line in book.split("\n"):
-            line_words = nltk.word_tokenize(line.decode('utf8'))
+            line_words = nltk.word_tokenize(line)#.decode('utf8'))
             new_line_words = []
             for word in line_words:
                 new_line_words.append(tokens.get(word, word))
@@ -346,7 +345,9 @@ def translations():
         out_text = "\n".join(out_text_lines)
         tr[name] = out_text
         cursor.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
-    return json.dumps(tr)
+        cursor.close()
+        connection.commit()
+        return json.dumps(tr)
 
 @app.route("/v1/corrections", methods=["POST"])
 @check_token
