@@ -14,6 +14,7 @@ from flask import g
 from flask_cors import CORS, cross_origin
 import nltk
 import polib
+import re
 
 
 PO_METADATA = {
@@ -142,8 +143,8 @@ def reset_password():
         connection.commit()
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
     else:
-        return 'email has not been registered'
-    return '{}\n'
+        return '{success:false, message:"Email has not yet been registered"}'
+    return '{success:true, message:"Link to reset password has been sent to the registered mail ID"}\n'
 
 @app.route("/v1/forgotpassword/<string:code>", methods = ["POST"])
 def reset_password2(code):
@@ -158,7 +159,7 @@ def reset_password2(code):
     cursor.execute("UPDATE users SET verification_code = %s, password_hash = %s, password_salt = %s, created_at = current_timestamp WHERE email = %s", (code, password_hash, password_salt, email))
     cursor.close()
     connection.commit()
-    return '{}\n'
+    return '{success:true, message:"Password has been reset"}\n'
 
 class TokenError(Exception):
 
@@ -318,7 +319,7 @@ def tokenwords(sourcelang):
 
 
 @app.route("/v1/translations", methods=["POST"])
-#@check_token
+@check_token
 def translations():
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
