@@ -266,19 +266,55 @@ def sources():
     req = request.get_json(True)
     language = req["language"]
     content = req["content"]
+    version = req["version"]
 
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("INSERT INTO sources (language) VALUES (%s) RETURNING id", (language,))
-    source_id = cursor.fetchone()[0]
-    cursor.close()
-    cursor = connection.cursor()
-    for k, v in content.items():
-        cursor.execute("INSERT INTO sourcetexts (name, content, source_id) VALUES (%s, %s, %s)", (k, v, source_id))
-
-    cursor.close()
-    connection.commit()
-    return '{success:true, message:"Completed Successfully"}'
+    cursor.execute("SELECT id from sources WHERE language = %s and version = %s",(language, version))
+    if cursor.fetchone():
+        cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s" ,(language, version))
+        source_id = cursor.fetchone()[0]
+        books = []
+        cursor.execute("SELECT book_name from sourcetexts WHERE source_id = %s", (source_id,))
+        all_books = cursor.fetchall()
+        cursor.close()
+        for i in range(0, len(all_books)):
+            books.append(all_books[i][0])
+        cursor = connection.cursor()
+        for k, v in content.items():
+            if k not in books:
+                book_name = (re.search('(?<=\id )\w+', v)).group(0)
+                escape_char = re.sub(r'\v ','\\v ', v)
+                for line in escape_char.split('\n'):
+                    if (re.search('(?<=\c )\d+', line)) != None:
+                        chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
+                    if (re.search(r'(?<=\\v )\d+', line)) != None:
+                        verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
+                        verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
+                        ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
+                        cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, source_id) VALUES (%s, %s, %s, %s, %s, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
+        cursor.close()
+        connection.commit()
+        return '{success:true, message:"Existing source updated"}'
+    else:
+        cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
+        source_id = cursor.fetchone()[0]
+        for k, v in content.items():
+            book_name = (re.search('(?<=\id )\w+', v)).group(0)
+            escape_char = re.sub(r'\v ','\\v ', v)
+            for line in escape_char.split('\n'):
+                if (re.search('(?<=\c )\d+', line)) != None:
+                    chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
+                    print (chapter_no)
+                if (re.search(r'(?<=\\v )\d+', line)) != None:
+                    verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
+                    verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
+                    ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
+                    cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, source_id) VALUES (%s, %s, %s, %s, %s, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
+        cursor.close()
+        connection.commit()
+        return '{success:true, message:"New source added to database"}'
+    return '{}\n'
 
 @app.route("/v1/get_languages", methods=["POST"])
 @check_token
