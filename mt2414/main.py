@@ -384,7 +384,7 @@ def translations():
         cursor.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
         cursor.close()
         connection.commit()
-        return json.dumps(tr)
+    return json.dumps(tr)
 
 @app.route("/v1/corrections", methods=["POST"])
 @check_token
