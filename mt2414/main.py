@@ -15,6 +15,7 @@ from flask_cors import CORS, cross_origin
 import nltk
 import polib
 import re
+import base64
 
 
 PO_METADATA = {
@@ -281,10 +282,11 @@ def sources():
         for i in range(0, len(all_books)):
             books.append(all_books[i][0])
         cursor = connection.cursor()
-        for k, v in content.items():
-            if k not in books:
-                book_name = (re.search('(?<=\id )\w+', v)).group(0)
-                escape_char = re.sub(r'\v ','\\v ', v)
+        for files in content:
+            text_file = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
+            book_name = (re.search('(?<=\id )\w+', text_file)).group(0)
+            if book_name not in books:
+                escape_char = re.sub(r'\v ','\\v ', text_file)
                 for line in escape_char.split('\n'):
                     if (re.search('(?<=\c )\d+', line)) != None:
                         chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
@@ -299,13 +301,13 @@ def sources():
     else:
         cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
         source_id = cursor.fetchone()[0]
-        for k, v in content.items():
-            book_name = (re.search('(?<=\id )\w+', v)).group(0)
-            escape_char = re.sub(r'\v ','\\v ', v)
+        for files in content:
+            text_file = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
+            book_name = (re.search('(?<=\id )\w+', text_file)).group(0)
+            escape_char = re.sub(r'\v ','\\v ', text_file)
             for line in escape_char.split('\n'):
                 if (re.search('(?<=\c )\d+', line)) != None:
                     chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
-                    print (chapter_no)
                 if (re.search(r'(?<=\\v )\d+', line)) != None:
                     verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
                     verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
