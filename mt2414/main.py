@@ -5,7 +5,7 @@ import json
 import psycopg2
 from functools import wraps
 from datetime import datetime, timedelta
-
+from xlwt import Workbook
 import scrypt
 import requests
 import jwt
@@ -221,10 +221,11 @@ def sources():
     req = request.get_json(True)
     language = req["language"]
     content = req["content"]
+    version = req['version']
 
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("INSERT INTO sources (language) VALUES (%s) RETURNING id", (language,))
+    cursor.execute("INSERT INTO sources (language,version) VALUES (%s,%s) RETURNING id", (language,version))
     source_id = cursor.fetchone()[0]
     cursor.close()
     cursor = connection.cursor()
@@ -243,7 +244,7 @@ def availableslan():
     cursor.execute("SELECT language FROM sources")
     l=cursor.fetchall()
     #for lst in l:
-    return str(l)
+    return json.dumps(str(l))
     cursor.close()
 
 
@@ -257,21 +258,42 @@ def tokenwords(sourcelang):
     out = []
     for rst in cursor.fetchall():
         out.append(rst[1])
-    cursor.close()
+    #cursor.close()
     connection.commit()
     token_list = nltk.word_tokenize(" ".join(out))
     token_set = set([x.encode('utf-8') for x in token_list])
     words = []
     for t in token_set:
-        entry = {
-                "msgid": t.decode("utf-8"),
-                "msgstr": '',
-                }
+        entry = t.decode("utf-8")
         words.append(entry)
-    tw = {}
-    tw["tokenwords"] = str(words)
-    #cursor.execute("INSERT INTO translationtexts (content) VALUES (%s)", tw)
-    return json.dumps(tw)
+    #tw = {}
+    #tw["tokenwords"] = str(words)
+    #tw=str(words)
+    for tokenwords in words:
+        cursor.execute("INSERT INTO tokens (tokenwords) VALUES (%s)", (tokenwords,))
+
+    cursor.close()
+    connection.commit()
+    #output = str(words)
+     # with open (sourcelang+".po","w") as file:
+    #      file.write(output)
+
+    wb = Workbook()
+    sheet1=wb.add_sheet('sheet1',cell_overwrite_ok=True)
+    sheet1.write(0,0,"S_N")
+    sheet1.write(0,1,"TOKENS")
+    sheet1.write(0,2,"REFERENCE")
+    i=1
+    j=1
+    #data = ['This', 'another', 'is', 'line', 'test']
+    for entry in words:
+        if entry:
+            sheet1.write(i,j,entry)
+
+            i = i+1
+
+    wb.save(sourcelang+".xls")
+    return str(words)
 
 
 @app.route("/v1/translations", methods=["POST"])

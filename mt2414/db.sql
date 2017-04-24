@@ -23,7 +23,8 @@ CREATE TABLE keys (
 
 CREATE TABLE sources (
 	id BIGSERIAL PRIMARY KEY,
-	language TEXT UNIQUE NOT NULL,
+	language TEXT NOT NULL,
+	version VARCHAR UNIQUE NOT NULL,
 	created_at timestamp with time zone,
 	updated_at timestamp with time zone,
 	deleted_at timestamp with time zone
@@ -40,6 +41,16 @@ CREATE TABLE sourcetexts (
 	source_id BIGINT REFERENCES sources(id) NOT NULL
 );
 
+
+CREATE TABLE tokens (
+	id BIGSERIAL NOT NULL,
+	sn VARCHAR NULL,
+	tokenwords TEXT NULL,
+	referen VARCHAR NULL,
+	PRIMARY KEY (sn,tokenwords),
+	source_id BIGINT REFERENCES sources(id) NOT NULL
+);
+
 CREATE TABLE translationtexts (
 	id BIGSERIAL PRIMARY KEY,
 	name TEXT NOT NULL,
@@ -50,3 +61,4 @@ CREATE TABLE translationtexts (
 	deleted_at timestamp with time zone,
 	source_id BIGINT REFERENCES sources(id) NOT NULL
 );
+
