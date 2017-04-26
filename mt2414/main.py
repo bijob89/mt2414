@@ -294,7 +294,7 @@ def sources():
                         verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
                         verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
                         ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
-                        cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, source_id) VALUES (%s, %s, %s, %s, %s, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
+                        cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, created_at, source_id) VALUES (%s, %s, %s, %s, %s, current_timestamp, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
         cursor.close()
         connection.commit()
         return '{success:true, message:"Existing source updated"}'
@@ -312,7 +312,7 @@ def sources():
                     verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
                     verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
                     ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
-                    cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, source_id) VALUES (%s, %s, %s, %s, %s, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
+                    cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, created_at, source_id) VALUES (%s, %s, %s, %s, %s, current_timestamp, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
         cursor.close()
         connection.commit()
         return '{success:true, message:"New source added to database"}'
