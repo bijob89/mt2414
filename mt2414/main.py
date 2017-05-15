@@ -14,6 +14,8 @@ from flask import g
 from flask_cors import CORS, cross_origin
 import nltk
 import polib
+import re
+import base64
 
 
 PO_METADATA = {
@@ -142,8 +144,8 @@ def reset_password():
         connection.commit()
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
     else:
-        return 'email has not been registered'
-    return '{}\n'
+        return '{success:false, message:"Email has not yet been registered"}'
+    return '{success:true, message:"Link to reset password has been sent to the registered mail ID"}\n'
 
 @app.route("/v1/forgotpassword/<string:code>", methods = ["POST"])
 def reset_password2(code):
@@ -158,7 +160,7 @@ def reset_password2(code):
     cursor.execute("UPDATE users SET verification_code = %s, password_hash = %s, password_salt = %s, created_at = current_timestamp WHERE email = %s", (code, password_hash, password_salt, email))
     cursor.close()
     connection.commit()
-    return '{}\n'
+    return '{success:true, message:"Password has been reset"}\n'
 
 class TokenError(Exception):
 
@@ -265,19 +267,56 @@ def sources():
     req = request.get_json(True)
     language = req["language"]
     content = req["content"]
+    version = req["version"]
 
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("INSERT INTO sources (language) VALUES (%s) RETURNING id", (language,))
-    source_id = cursor.fetchone()[0]
-    cursor.close()
-    cursor = connection.cursor()
-    for k, v in content.items():
-        cursor.execute("INSERT INTO sourcetexts (name, content, source_id) VALUES (%s, %s, %s)", (k, v, source_id))
-
-    cursor.close()
-    connection.commit()
-    return '{success:true, message:"Completed Successfully"}'
+    cursor.execute("SELECT id from sources WHERE language = %s and version = %s",(language, version))
+    if cursor.fetchone():
+        cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s" ,(language, version))
+        source_id = cursor.fetchone()[0]
+        books = []
+        cursor.execute("SELECT book_name from sourcetexts WHERE source_id = %s", (source_id,))
+        all_books = cursor.fetchall()
+        cursor.close()
+        for i in range(0, len(all_books)):
+            books.append(all_books[i][0])
+        cursor = connection.cursor()
+        for files in content:
+            text_file = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
+            book_name = (re.search('(?<=\id )\w+', text_file)).group(0)
+            if book_name not in books:
+                escape_char = re.sub(r'\v ','\\v ', text_file)
+                for line in escape_char.split('\n'):
+                    if (re.search('(?<=\c )\d+', line)) != None:
+                        chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
+                    if (re.search(r'(?<=\\v )\d+', line)) != None:
+                        verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
+                        verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
+                        ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
+                        cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, created_at, source_id) VALUES (%s, %s, %s, %s, %s, current_timestamp, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
+        cursor.close()
+        connection.commit()
+        return '{success:true, message:"Existing source updated"}'
+    else:
+        cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
+        source_id = cursor.fetchone()[0]
+        for files in content:
+            text_file = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
+            book_name = (re.search('(?<=\id )\w+', text_file)).group(0)
+            escape_char = re.sub(r'\v ','\\v ', text_file)
+            for line in escape_char.split('\n'):
+                if (re.search('(?<=\c )\d+', line)) != None:
+                    chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
+                if (re.search(r'(?<=\\v )\d+', line)) != None:
+                    verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
+                    verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
+                    ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
+                    cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, created_at, source_id) VALUES (%s, %s, %s, %s, %s, current_timestamp, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
+        cursor.close()
+        connection.commit()
+        return '{success:true, message:"New source added to database"}'
+    return '{}\n'
 
 @app.route("/v1/get_languages", methods=["POST"])
 @check_token
@@ -314,12 +353,11 @@ def tokenwords(sourcelang):
         words.append(entry)
     tw = {}
     tw["tokenwords"] = str(words)
-    #cursor.execute("INSERT INTO translationtexts (content) VALUES (%s)", tw)
     return json.dumps(tw)
 
 
 @app.route("/v1/translations", methods=["POST"])
-#@check_token
+@check_token
 def translations():
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
@@ -336,7 +374,7 @@ def translations():
     for name, book in out:
         out_text_lines = []
         for line in book.split("\n"):
-            line_words = nltk.word_tokenize(line.decode('utf8'))
+            line_words = nltk.word_tokenize(line)#.decode('utf8'))
             new_line_words = []
             for word in line_words:
                 new_line_words.append(tokens.get(word, word))
@@ -346,6 +384,8 @@ def translations():
         out_text = "\n".join(out_text_lines)
         tr[name] = out_text
         cursor.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
+        cursor.close()
+        connection.commit()
     return json.dumps(tr)
 
 @app.route("/v1/corrections", methods=["POST"])
