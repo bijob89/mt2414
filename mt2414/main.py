@@ -5,7 +5,7 @@ import json
 import psycopg2
 from functools import wraps
 from datetime import datetime, timedelta
-
+from xlwt import Workbook
 import scrypt
 import requests
 import jwt
@@ -326,7 +326,7 @@ def availableslan():
     cursor.execute("SELECT language FROM sources")
     l=cursor.fetchall()
     #for lst in l:
-    return str(l)
+    return json.dumps(str(l))
     cursor.close()
 
 
@@ -340,17 +340,15 @@ def tokenwords(sourcelang):
     out = []
     for rst in cursor.fetchall():
         out.append(rst[1])
-    cursor.close()
+    #cursor.close()
     connection.commit()
     token_list = nltk.word_tokenize(" ".join(out))
     token_set = set([x.encode('utf-8') for x in token_list])
     words = []
     for t in token_set:
-        entry = {
-                "msgid": t.decode("utf-8"),
-                "msgstr": '',
-                }
+        entry = t.decode("utf-8")
         words.append(entry)
+
     tw = {}
     tw["tokenwords"] = str(words)
     return json.dumps(tw)
