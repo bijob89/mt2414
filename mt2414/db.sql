@@ -46,7 +46,7 @@ CREATE TABLE tokens (
 	id BIGSERIAL NOT NULL,
 	sn VARCHAR NULL,
 	tokenwords TEXT NULL,
-	referen VARCHAR NULL,
+	reference VARCHAR NULL,
 	PRIMARY KEY (sn,tokenwords),
 	source_id BIGINT REFERENCES sources(id) NOT NULL
 );
