@@ -360,6 +360,77 @@ def tokenwords():
     tw["tokenwords"] = str(words)
     return json.dumps(tw)
 
+@app.route("/v1/generateconcordance", methods=["POST"])
+@check_token
+def get_concordance():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id from sources WHERE language = %s and version = %s", (language, version))
+    source_id = cursor.fetchone()[0]
+    cursor.execute("SELECT token from tokenwords WHERE source_id = %s", (source_id,))
+    token_set = cursor.fetchall()
+    cursor.execute("SELECT book_name, content, revision_num FROM sourcetexts WHERE source_id = %s", (source_id,))
+    content = cursor.fetchall()
+
+    content_text = []
+    for b, c, r in content:
+        book_name = (re.search('(?<=\id )\w+', c)).group(0)
+        escape_char = re.sub(r'\v ','\\v ', c)
+        for line in escape_char.split('\n'):
+            if (re.search('(?<=\c )\d+', line)) != None:
+                chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
+            if (re.search(r'(?<=\\v )\d+', line)) != None:
+                verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
+                verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
+                ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
+                content_text.append((r, ref, verse))
+    full_text_list = []
+    for item in content_text:
+        temp_text = " ".join(item)
+        full_text_list.append(temp_text)
+    full_text = "\n".join(full_text_list)
+    for i in range(0, len(token_set)):
+        token = token_set[i][0]
+        if token:
+            concord = re.findall('(.*' + str(token) + '.*)' , full_text)
+            for line in concord:
+                line_split = re.search(r'(\d+)(\s)(.*\d+:\d+)(\s)(.*)', line)
+                ref_no = line_split.group(3)
+                verse = line_split.group(5)
+                revision_num = line_split.group(1)
+                cursor.execute("SELECT book_name FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id, revision_num))
+                ref_book = cursor.fetchall()
+                db_book = [ref_book[x][0] for x in range(0,len(ref_book))]
+                if ref_no not in db_book:
+                    cursor.execute("INSERT INTO concordance (token, book_name, concordances, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (token, ref_no, verse, revision_num, source_id))
+    cursor.close()
+    connection.commit()
+    return "concordances created and stored in DB"
+
+@app.route("/v1/getconcordance", methods=["POST"])
+@check_token
+def generate_concordance():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    revision = req["revision"]
+    token = req["token"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id from sources WHERE language = %s AND version = %s", (language, version))
+    source_id = cursor.fetchone()[0]
+    cursor.execute("SELECT book_name, concordances FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id, str(revision)))
+    concord = cursor.fetchall()
+    cursor.close()
+    con = {}
+    for i in range(0, len(concord)):
+        book = concord[i][0]
+        concordances = concord[i][1]
+        con[str(book)] = str(concordances)
+    return json.dumps(con)
 
 @app.route("/v1/translations", methods=["POST"])
 @check_token
