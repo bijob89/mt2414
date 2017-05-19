@@ -69,7 +69,7 @@ CREATE TABLE translationtexts (
 	name TEXT NOT NULL,
 	content TEXT NOT NULL,
 	language TEXT NOT NULL,
-	revision_num	 TEXT NOT NULL,
+	revision_num TEXT NOT NULL,
 	created_at timestamp with time zone,
 	updated_at timestamp with time zone,
 	deleted_at timestamp with time zone,

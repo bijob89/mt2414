@@ -299,7 +299,7 @@ def sources():
                 cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
         cursor.close()
         connection.commit()
-        return "sources updated"
+        return '{success:true, message:"Existing source updated"}'
     else:
         cursor = connection.cursor()
         cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
@@ -311,7 +311,7 @@ def sources():
             cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
             cursor.close()
             connection.commit()
-        return "New sources created"
+        return '{success:true, message:"New source added to database"}'
 
 @app.route("/v1/get_languages", methods=["POST"])
 @check_token
