@@ -326,24 +326,36 @@ def availableslan():
 
 
 
-@app.route("/v1/tokenwords/<string:sourcelang>", methods=["GET"])
+@app.route("/v1/tokenwords", methods=["GET", "POST"])
 @check_token
-def tokenwords(sourcelang):
+def tokenwords():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    revision = req["revision"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT st.name, st.content FROM sourcetexts st LEFT JOIN sources s ON st.source_id = s.id WHERE s.language = %s", (sourcelang,))
+    cursor.execute("SELECT id from sources WHERE language = %s AND version = %s", (language, version))
+    source_id = cursor.fetchone()[0]
+    cursor.execute("SELECT content from sourcetexts WHERE source_id = %s AND revision_num = %s", (source_id, revision))
     out = []
     for rst in cursor.fetchall():
-        out.append(rst[1])
-    #cursor.close()
-    connection.commit()
-    token_list = nltk.word_tokenize(" ".join(out))
+        out.append(rst[0])
+    remove_punct = re.sub(r'([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।])','', (" ".join(out)))
+    token_list = nltk.word_tokenize(remove_punct)
     token_set = set([x.encode('utf-8') for x in token_list])
     words = []
     for t in token_set:
-        entry = t.decode("utf-8")
+        entry = {
+                "msgid": t.decode("utf-8"),
+                "msgstr": '',
+                }
         words.append(entry)
-
+        cursor.execute("SELECT token FROM tokenwords WHERE token = %s AND source_id = %s AND revision_num = %s", (t.decode("utf-8"), source_id, revision))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO tokenwords (token, revision_num, source_id) VALUES (%s, %s, %s)", (t.decode("utf-8"), revision, source_id))
+    cursor.close()
+    connection.commit()
     tw = {}
     tw["tokenwords"] = str(words)
     return json.dumps(tw)
