@@ -268,55 +268,50 @@ def sources():
     language = req["language"]
     content = req["content"]
     version = req["version"]
-
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id from sources WHERE language = %s and version = %s",(language, version))
-    if cursor.fetchone():
-        cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s" ,(language, version))
-        source_id = cursor.fetchone()[0]
+    try:
+        rst = cursor.fetchone()
+    except:
+        pass
+    cursor.close()
+    if rst:
+        cursor = connection.cursor()
+        source_id = rst[0]
         books = []
-        cursor.execute("SELECT book_name from sourcetexts WHERE source_id = %s", (source_id,))
+        cursor.execute("SELECT book_name, content, revision_num from sourcetexts WHERE source_id = %s", (source_id,))
         all_books = cursor.fetchall()
-        cursor.close()
         for i in range(0, len(all_books)):
             books.append(all_books[i][0])
-        cursor = connection.cursor()
         for files in content:
             text_file = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
             book_name = (re.search('(?<=\id )\w+', text_file)).group(0)
-            if book_name not in books:
-                escape_char = re.sub(r'\v ','\\v ', text_file)
-                for line in escape_char.split('\n'):
-                    if (re.search('(?<=\c )\d+', line)) != None:
-                        chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
-                    if (re.search(r'(?<=\\v )\d+', line)) != None:
-                        verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
-                        verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
-                        ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
-                        cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, created_at, source_id) VALUES (%s, %s, %s, %s, %s, current_timestamp, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
+            if book_name in books:
+                count = 0
+                for i in range(0, len(all_books)):
+                    if all_books[i][1] != text_file and book_name == all_books[i][0]:
+                        count = count + 1
+                revision_num = count + 1
+                cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
+            elif book_name not in books:
+                revision_num = 1
+                cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
         cursor.close()
         connection.commit()
         return '{success:true, message:"Existing source updated"}'
     else:
+        cursor = connection.cursor()
         cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
         source_id = cursor.fetchone()[0]
         for files in content:
             text_file = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
             book_name = (re.search('(?<=\id )\w+', text_file)).group(0)
-            escape_char = re.sub(r'\v ','\\v ', text_file)
-            for line in escape_char.split('\n'):
-                if (re.search('(?<=\c )\d+', line)) != None:
-                    chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
-                if (re.search(r'(?<=\\v )\d+', line)) != None:
-                    verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
-                    verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
-                    ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
-                    cursor.execute("INSERT INTO sourcetexts (book_name, chapnum, versenum, verse, book, created_at, source_id) VALUES (%s, %s, %s, %s, %s, current_timestamp, %s)", (book_name, chapter_no, verse_no, verse, ref, source_id))
-        cursor.close()
-        connection.commit()
+            revision_num = 1
+            cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
+            cursor.close()
+            connection.commit()
         return '{success:true, message:"New source added to database"}'
-    return '{}\n'
 
 @app.route("/v1/get_languages", methods=["POST"])
 @check_token
@@ -331,48 +326,133 @@ def availableslan():
 
 
 
-@app.route("/v1/tokenwords/<string:sourcelang>", methods=["GET"])
+@app.route("/v1/tokenwords", methods=["GET", "POST"])
 @check_token
-def tokenwords(sourcelang):
+def tokenwords():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    revision = req["revision"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT st.name, st.content FROM sourcetexts st LEFT JOIN sources s ON st.source_id = s.id WHERE s.language = %s", (sourcelang,))
+    cursor.execute("SELECT id from sources WHERE language = %s AND version = %s", (language, version))
+    source_id = cursor.fetchone()[0]
+    cursor.execute("SELECT content from sourcetexts WHERE source_id = %s AND revision_num = %s", (source_id, revision))
     out = []
     for rst in cursor.fetchall():
-        out.append(rst[1])
-    #cursor.close()
-    connection.commit()
-    token_list = nltk.word_tokenize(" ".join(out))
+        out.append(rst[0])
+    remove_punct = re.sub(r'([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।])','', (" ".join(out)))
+    token_list = nltk.word_tokenize(remove_punct)
     token_set = set([x.encode('utf-8') for x in token_list])
     words = []
     for t in token_set:
-        entry = t.decode("utf-8")
+        entry = {
+                "msgid": t.decode("utf-8"),
+                "msgstr": '',
+                }
         words.append(entry)
-
+        cursor.execute("SELECT token FROM tokenwords WHERE token = %s AND source_id = %s AND revision_num = %s", (t.decode("utf-8"), source_id, revision))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO tokenwords (token, revision_num, source_id) VALUES (%s, %s, %s)", (t.decode("utf-8"), revision, source_id))
+    cursor.close()
+    connection.commit()
     tw = {}
     tw["tokenwords"] = str(words)
     return json.dumps(tw)
 
+@app.route("/v1/generateconcordance", methods=["POST"])
+@check_token
+def get_concordance():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id from sources WHERE language = %s and version = %s", (language, version))
+    source_id = cursor.fetchone()[0]
+    cursor.execute("SELECT token from tokenwords WHERE source_id = %s", (source_id,))
+    token_set = cursor.fetchall()
+    cursor.execute("SELECT book_name, content, revision_num FROM sourcetexts WHERE source_id = %s", (source_id,))
+    content = cursor.fetchall()
+
+    content_text = []
+    for b, c, r in content:
+        book_name = (re.search('(?<=\id )\w+', c)).group(0)
+        escape_char = re.sub(r'\v ','\\v ', c)
+        for line in escape_char.split('\n'):
+            if (re.search('(?<=\c )\d+', line)) != None:
+                chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
+            if (re.search(r'(?<=\\v )\d+', line)) != None:
+                verse_no = re.search(r'((?<=\\v )\d+)',line).group(0)
+                verse = re.search(r'(?<=)(\\v )(\d+ )(.*)',line).group(3)
+                ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
+                content_text.append((r, ref, verse))
+    full_text_list = []
+    for item in content_text:
+        temp_text = " ".join(item)
+        full_text_list.append(temp_text)
+    full_text = "\n".join(full_text_list)
+    for i in range(0, len(token_set)):
+        token = token_set[i][0]
+        if token:
+            concord = re.findall('(.*' + str(token) + '.*)' , full_text)
+            for line in concord:
+                line_split = re.search(r'(\d+)(\s)(.*\d+:\d+)(\s)(.*)', line)
+                ref_no = line_split.group(3)
+                verse = line_split.group(5)
+                revision_num = line_split.group(1)
+                cursor.execute("SELECT book_name FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id, revision_num))
+                ref_book = cursor.fetchall()
+                db_book = [ref_book[x][0] for x in range(0,len(ref_book))]
+                if ref_no not in db_book:
+                    cursor.execute("INSERT INTO concordance (token, book_name, concordances, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (token, ref_no, verse, revision_num, source_id))
+    cursor.close()
+    connection.commit()
+    return "concordances created and stored in DB"
+
+@app.route("/v1/getconcordance", methods=["POST"])
+@check_token
+def generate_concordance():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    revision = req["revision"]
+    token = req["token"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id from sources WHERE language = %s AND version = %s", (language, version))
+    source_id = cursor.fetchone()[0]
+    cursor.execute("SELECT book_name, concordances FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id, str(revision)))
+    concord = cursor.fetchall()
+    cursor.close()
+    con = {}
+    for i in range(0, len(concord)):
+        book = concord[i][0]
+        concordances = concord[i][1]
+        con[str(book)] = str(concordances)
+    return json.dumps(con)
 
 @app.route("/v1/translations", methods=["POST"])
 @check_token
 def translations():
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
-    #targetlang = req["targetlang"]
+    targetlang = req["targetlang"]
     tokens = req["tokenwords"]
+    version = req["version"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("select st.name, st.content, st.source_id from sourcetexts st left join sources s on st.source_id = s.id WHERE s.language = %s", (sourcelang,))
+    cursor.execute("SELECT st.book_name, st.content, st.revision_num, s.id FROM sourcetexts st LEFT JOIN sources s ON st.source_id = s.id WHERE s.language = %s AND s.version = %s", (sourcelang, version))
     out = []
     for rst in cursor.fetchall():
-        out.append((rst[0], rst[1]))
-    source_id = rst[2]
+        out.append((rst[0], rst[1], rst[2]))
+    source_id = rst[3]
     tr = {}
-    for name, book in out:
+    for name, book, revision_num in out:
         out_text_lines = []
-        for line in book.split("\n"):
-            line_words = nltk.word_tokenize(line)#.decode('utf8'))
+        content = re.sub(r'([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~। ])',r' \1 ', book)
+        for line in content.split("\n"):
+            line_words = nltk.word_tokenize(line)
             new_line_words = []
             for word in line_words:
                 new_line_words.append(tokens.get(word, word))
@@ -380,8 +460,9 @@ def translations():
             out_text_lines.append(out_line)
 
         out_text = "\n".join(out_text_lines)
-        tr[name] = out_text
-        cursor.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
+        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~। ])',r'\1', out_text)
+        tr[name] = out_final
+        cursor.execute("INSERT INTO translationtexts (name, content, language, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (name, out_final, targetlang, revision_num, source_id))
         cursor.close()
         connection.commit()
     return json.dumps(tr)

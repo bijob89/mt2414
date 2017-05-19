@@ -33,21 +33,35 @@ CREATE TABLE sources (
 
 CREATE TABLE sourcetexts (
 	id BIGSERIAL PRIMARY KEY,
-	name TEXT NOT NULL,
+	book_name TEXT NOT NULL,
 	content TEXT NOT NULL,
+	revision_num TEXT NOT NULL,
+	created_at timestamp with time zone,	
+	updated_at timestamp with time zone,
+	deleted_at timestamp with time zone,
+	source_id BIGINT REFERENCES sources(id) NOT NULL
+);
+
+CREATE TABLE concordance (
+	id BIGSERIAL PRIMARY KEY,
+	token TEXT NOT NULL,
+	book_name TEXT NOT NULL,
+	concordances TEXT NOT NULL,
+	revision_num TEXT NOT NULL,
 	created_at timestamp with time zone,
 	updated_at timestamp with time zone,
 	deleted_at timestamp with time zone,
 	source_id BIGINT REFERENCES sources(id) NOT NULL
 );
 
-
-CREATE TABLE tokens (
-	id BIGSERIAL NOT NULL,
-	sn VARCHAR NULL,
-	tokenwords TEXT NULL,
-	reference VARCHAR NULL,
-	PRIMARY KEY (sn,tokenwords),
+CREATE TABLE tokenwords (
+	id BIGSERIAL PRIMARY KEY,
+	token TEXT NOT NULL,
+	revision_num TEXT NOT NULL,
+	strongs_num TEXT,
+	created_at timestamp with time zone,
+	updated_at timestamp with time zone,
+	deleted_at timestamp with time zone,
 	source_id BIGINT REFERENCES sources(id) NOT NULL
 );
 
@@ -56,6 +70,7 @@ CREATE TABLE translationtexts (
 	name TEXT NOT NULL,
 	content TEXT NOT NULL,
 	language TEXT NOT NULL,
+	revision_num TEXT NOT NULL,
 	created_at timestamp with time zone,
 	updated_at timestamp with time zone,
 	deleted_at timestamp with time zone,
