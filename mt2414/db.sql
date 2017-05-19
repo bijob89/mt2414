@@ -58,6 +58,7 @@ CREATE TABLE tokenwords (
 	id BIGSERIAL PRIMARY KEY,
 	token TEXT NOT NULL,
 	revision_num TEXT NOT NULL,
+	strongs_num TEXT,
 	created_at timestamp with time zone,
 	updated_at timestamp with time zone,
 	deleted_at timestamp with time zone,
