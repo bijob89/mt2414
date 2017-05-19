@@ -437,20 +437,22 @@ def generate_concordance():
 def translations():
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
-    #targetlang = req["targetlang"]
+    targetlang = req["targetlang"]
     tokens = req["tokenwords"]
+    version = req["version"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("select st.name, st.content, st.source_id from sourcetexts st left join sources s on st.source_id = s.id WHERE s.language = %s", (sourcelang,))
+    cursor.execute("SELECT st.book_name, st.content, st.revision_num, s.id FROM sourcetexts st LEFT JOIN sources s ON st.source_id = s.id WHERE s.language = %s AND s.version = %s", (sourcelang, version))
     out = []
     for rst in cursor.fetchall():
-        out.append((rst[0], rst[1]))
-    source_id = rst[2]
+        out.append((rst[0], rst[1], rst[2]))
+    source_id = rst[3]
     tr = {}
-    for name, book in out:
+    for name, book, revision_num in out:
         out_text_lines = []
-        for line in book.split("\n"):
-            line_words = nltk.word_tokenize(line)#.decode('utf8'))
+        content = re.sub(r'([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~। ])',r' \1 ', book)
+        for line in content.split("\n"):
+            line_words = nltk.word_tokenize(line)
             new_line_words = []
             for word in line_words:
                 new_line_words.append(tokens.get(word, word))
@@ -458,8 +460,9 @@ def translations():
             out_text_lines.append(out_line)
 
         out_text = "\n".join(out_text_lines)
-        tr[name] = out_text
-        cursor.execute("INSERT INTO translationtexts (name, content, language, source_id) VALUES (%s, %s, %s, %s)", (name, out_text, sourcelang, source_id))
+        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~। ])',r'\1', out_text)
+        tr[name] = out_final
+        cursor.execute("INSERT INTO translationtexts (name, content, language, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (name, out_final, targetlang, revision_num, source_id))
         cursor.close()
         connection.commit()
     return json.dumps(tr)
