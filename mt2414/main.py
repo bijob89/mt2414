@@ -292,8 +292,11 @@ def sources():
                 for i in range(0, len(all_books)):
                     if all_books[i][1] != text_file and book_name == all_books[i][0]:
                         count = count + 1
-                revision_num = count + 1
-                cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
+                    elif all_books[i][1] == text_file and book_name == all_books[i][0]:
+                        count1 = all_books[i][2]
+                if not count1:
+                    revision_num = count + 1
+                    cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
             elif book_name not in books:
                 revision_num = 1
                 cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
