@@ -392,7 +392,7 @@ def tokenwords():
             cursor.close()
             connection.commit()
             tw = {}
-            tw["tokenwords"] = str(words)
+            tw["tokenwords"] = words
             return json.dumps(tw)
 
 
