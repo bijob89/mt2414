@@ -495,7 +495,7 @@ def translations():
             out_text_lines.append(out_line)
 
         out_text = "\n".join(out_text_lines)
-        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~। ])\s?',r'\1', out_text)
+        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~। ])',r'\1', out_text)
         tr[name] = out_final
         cursor.execute("INSERT INTO translationtexts (name, content, language, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (name, out_final, targetlang, revision, source_id))
     cursor.close()
