@@ -295,11 +295,7 @@ def sources():
                         count = count + 1
                     elif all_books[i][1] == text_file and book_name == all_books[i][0]:
                         count1 = all_books[i][2]
-<<<<<<< 7cac723c674cfc75327aee49e5ccb19c3143cd46
-                if count1 ==0 and count != 0:
-=======
                 if count1 == 0 and count != 0:
->>>>>>> Added APi for uploading token translation and resolved merge conflicts
                     revision_num = count + 1
                     cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
             elif book_name not in books:
