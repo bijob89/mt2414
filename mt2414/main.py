@@ -333,7 +333,7 @@ def availableslan():
 
 @app.route("/v1/autotokens", methods=["GET", "POST"])
 @check_token
-def tokenwords():
+def autotokens():
     req = request.get_json(True)
     language = req["language"]
     version = req["version"]
