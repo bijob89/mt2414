@@ -313,14 +313,35 @@ def sources():
             connection.commit()
         return '{success:true, message:"New source added to database"}'
 
+
 @app.route("/v1/get_languages", methods=["POST"])
 @check_token
 def availableslan():
     connection =get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT language FROM sources")
-    l=cursor.fetchall()
-    return json.dumps(str(l))
+    cursor.execute("SELECT s.language, s.version FROM sources s  LEFT JOIN sourcetexts st ON st.source_id = s.id")
+    books=set()
+    al = cursor.fetchall()
+    for rst in range(0, len(al)):
+        books.add(al[rst])
+    mylist=list(books)
+    return json.dumps (mylist)
+    cursor.close()
+
+@app.route("/v1/get_books", methods=["POST"])
+@check_token
+def availablesbooks():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    connection =get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT st.book_name,st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE language = %s AND version = %s",(language, version))
+    books=[]
+    al = cursor.fetchall()
+    for rst in range(0, len(al)):
+        books.append(al[rst])
+    return json.dumps(books)
     cursor.close()
 
 @app.route("/v1/autotokens", methods=["GET", "POST"])
@@ -373,6 +394,7 @@ def tokenwords():
             tw = {}
             tw["tokenwords"] = str(words)
             return json.dumps(tw)
+
 
 @app.route("/v1/generateconcordance", methods=["POST"])
 @check_token
