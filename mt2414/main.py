@@ -5,7 +5,7 @@ import json
 import psycopg2
 from functools import wraps
 from datetime import datetime, timedelta
-from xlwt import Workbook
+# from xlwt import Workbook
 import scrypt
 import requests
 import jwt
@@ -289,12 +289,13 @@ def sources():
             book_name = (re.search('(?<=\id )\w+', text_file)).group(0)
             if book_name in books:
                 count = 0
+                count1 = 0
                 for i in range(0, len(all_books)):
                     if all_books[i][1] != text_file and book_name == all_books[i][0]:
                         count = count + 1
                     elif all_books[i][1] == text_file and book_name == all_books[i][0]:
                         count1 = all_books[i][2]
-                if not count1:
+                if count1 ==0 and count != 0:
                     revision_num = count + 1
                     cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
             elif book_name not in books:
@@ -327,8 +328,6 @@ def availableslan():
     return json.dumps(str(l))
     cursor.close()
 
-
-
 @app.route("/v1/tokenwords", methods=["GET", "POST"])
 @check_token
 def tokenwords():
@@ -339,12 +338,15 @@ def tokenwords():
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id from sources WHERE language = %s AND version = %s", (language, version))
-    source_id = cursor.fetchone()[0]
+    try:
+        source_id = cursor.fetchone()[0]
+    except:
+        return '{success:False, message:"Select a valid language and version"}'
     cursor.execute("SELECT content from sourcetexts WHERE source_id = %s AND revision_num = %s", (source_id, revision))
     out = []
     for rst in cursor.fetchall():
         out.append(rst[0])
-    remove_punct = re.sub(r'([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।])','', (" ".join(out)))
+    remove_punct = re.sub(r'([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।0123456789])','', (" ".join(out)))
     token_list = nltk.word_tokenize(remove_punct)
     token_set = set([x.encode('utf-8') for x in token_list])
     words = []
@@ -360,8 +362,32 @@ def tokenwords():
     cursor.close()
     connection.commit()
     tw = {}
-    tw["tokenwords"] = str(words)
+    tw["tokenwords"] = words
     return json.dumps(tw)
+
+@app.route("/v1/uploadtokentranslation", methods=["POST"])
+@check_token
+def upload_tokens_translation():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    revision = req["revision"]
+    tokenwords = req["tokenwords"]
+    connection = get_db()
+    cursor.execute("SELECT s.id FROM sources s LEFT JOIN tokenwords t ON s.id = t.source_id WHERE language = %s, version = %s AND revision_num = %s", (language, version, revision))
+    try:
+        rst = cursor.fetchall()
+    except:
+        return '{success:False, message:"Unable to locate the language, version and revision number specified"}'
+    source_id = rst[0]
+    for k, v in tokenwords.items():
+        cursor.ececute("SELECT token_translation FROM tokenwords WHERE token = %s AND source_id = %s and revision_num = %s",(k, source_id, revision))
+        if cursor.fetchone():
+            cursor.execute("UPDATE tokenwords SET token_translation = %s WHERE token = %s AND source_id = %s AND revision_num = %s", (v, k, source_id, revision))
+    cursor.close()
+    connection.commit()
+    return '{success:True, message:"Token translations have been updated."}'
+
 
 @app.route("/v1/generateconcordance", methods=["POST"])
 @check_token
@@ -463,7 +489,7 @@ def translations():
             out_text_lines.append(out_line)
 
         out_text = "\n".join(out_text_lines)
-        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~। ])',r'\1', out_text)
+        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~। ])\s?',r'\1', out_text)
         tr[name] = out_final
         cursor.execute("INSERT INTO translationtexts (name, content, language, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (name, out_final, targetlang, revision_num, source_id))
         cursor.close()
