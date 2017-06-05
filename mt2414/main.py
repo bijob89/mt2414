@@ -5,7 +5,6 @@ import json
 import psycopg2
 from functools import wraps
 from datetime import datetime, timedelta
-# from xlwt import Workbook
 import scrypt
 import requests
 import jwt
@@ -67,18 +66,18 @@ def auth():
     cursor.execute("SELECT email FROM users WHERE  email = %s",(email,))
     est = cursor.fetchone()
     if not est:
-        return '{success:false, message:"Invalid email"}'
+        return '{"success":false, "message":"Invalid email"}'
     cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (email,))
     rst = cursor.fetchone()
     if not rst:
-        return '{success:false, message:"Email is not Verified"}'
+        return '{"success":false, "message":"Email is not Verified"}'
     password_hash = rst[0].hex()
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
     if password_hash == password_hash_new:
         access_token = jwt.encode({'sub': email}, jwt_hs256_secret, algorithm='HS256')
         return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
-    return '{success:false, message:"Incorrect Password"}'
+    return '{"success":false, "message":"Incorrect Password"}'
 
 
 @app.route("/v1/registrations", methods=["POST"])
@@ -108,14 +107,14 @@ def new_registration():
     cursor = connection.cursor()
     cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
     if cursor.fetchone():
-        return '{success:false, message:"Email Already Exists"}'
+        return '{"success":false, "message":"Email Already Exists"}'
     else:
         cursor.execute("INSERT INTO users (email, verification_code, password_hash, password_salt, created_at) VALUES (%s, %s, %s, %s, current_timestamp)",
                 (email, verification_code, password_hash, password_salt))
     cursor.close()
     connection.commit()
     resp = requests.post(url, data=json.dumps(payload), headers=headers)
-    return '{success:true, message:"Verification Email Sent"}'
+    return '{"success":true, "message":"Verification Email Sent"}'
 
 @app.route("/v1/resetpassword", methods = ["POST"])
 def reset_password():
@@ -144,8 +143,8 @@ def reset_password():
         connection.commit()
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
     else:
-        return '{success:false, message:"Email has not yet been registered"}'
-    return '{success:true, message:"Link to reset password has been sent to the registered mail ID"}\n'
+        return '{"success":false, "message":"Email has not yet been registered"}'
+    return '{"success":true, "message":"Link to reset password has been sent to the registered mail ID"}\n'
 
 @app.route("/v1/forgotpassword/<string:code>", methods = ["POST"])
 def reset_password2(code):
@@ -160,7 +159,7 @@ def reset_password2(code):
     cursor.execute("UPDATE users SET verification_code = %s, password_hash = %s, password_salt = %s, created_at = current_timestamp WHERE email = %s", (code, password_hash, password_salt, email))
     cursor.close()
     connection.commit()
-    return '{success:true, message:"Password has been reset"}\n'
+    return '{"success":true, "message":"Password has been reset"}\n'
 
 class TokenError(Exception):
 
@@ -258,7 +257,7 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    return '{success:true, message:"Email Verified"}'
+    return '{"success":true, "message":"Email Verified"}'
 
 
 @app.route("/v1/sources", methods=["POST"])
@@ -303,7 +302,7 @@ def sources():
                 cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
         cursor.close()
         connection.commit()
-        return '{success:true, message:"Existing source updated"}'
+        return '{"success":true, "message":"Existing source updated"}'
     else:
         cursor = connection.cursor()
         cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
@@ -315,7 +314,7 @@ def sources():
             cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
             cursor.close()
             connection.commit()
-        return '{success:true, message:"New source added to database"}'
+        return '{"success":true, "message":"New source added to database"}'
 
 
 @app.route("/v1/get_languages", methods=["POST"])
@@ -329,7 +328,7 @@ def availableslan():
     for rst in range(0, len(al)):
         books.add(al[rst])
     mylist=list(books)
-    return json.dumps (mylist)
+    return json.dumps(mylist)
     cursor.close()
 
 @app.route("/v1/get_books", methods=["POST"])
@@ -340,7 +339,7 @@ def availablesbooks():
     version = req["version"]
     connection =get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT st.book_name,st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE language = %s AND version = %s",(language, version))
+    cursor.execute("SELECT st.book_name, st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s",(language, version))
     books=[]
     al = cursor.fetchall()
     for rst in range(0, len(al)):
@@ -361,7 +360,7 @@ def autotokens():
     source_id = cursor.fetchone()
     cursor.close()
     if not source_id:
-        return '{success:false, message:"Not Found! Upload Source"}'
+        return '{"success":false, "message":"Not Found! Upload Source"}'
     else:
         cursor = connection.cursor()
         cursor.execute("SELECT agt.token FROM autogeneratedtokens agt LEFT JOIN sources s ON agt.source_id = s.id WHERE agt.source_id = %s AND agt.revision_num = %s AND s.language = %s", (source_id, revision,language))
@@ -410,17 +409,17 @@ def upload_tokens_translation():
     targetlang = req["targetlang"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT s.id FROM sources s LEFT JOIN autogeneratedtokens t ON s.id = t.source_id WHERE language = %s AND version = %s AND revision_num = %s", (language, version, revision))
+    cursor.execute("SELECT s.id FROM sources s LEFT JOIN autogeneratedtokens agt ON s.id = agt.source_id WHERE s.language = %s AND s.version = %s AND agt.revision_num = %s", (language, version, revision))
     try:
         rst = cursor.fetchall()
     except:
-        return '{success:False, message:"Unable to locate the language, version and revision number specified"}'
+        return '{"success":False, "message":"Unable to locate the language, version and revision number specified"}'
     source_id = rst[0]
     for k, v in tokenwords.items():
         cursor.execute("UPDATE autogeneratedtokens SET translated_token = %s, targetlang = %s WHERE token = %s AND source_id = %s AND revision_num = %s", (v, targetlang, k, source_id, revision))
     cursor.close()
     connection.commit()
-    return '{success:True, message:"Token translations have been updated."}'
+    return '{"success":True, "message":"Token translations have been updated."}'
 
 
 @app.route("/v1/generateconcordance", methods=["POST"])
@@ -471,7 +470,7 @@ def get_concordance():
                     cursor.execute("INSERT INTO concordance (token, book_name, concordances, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (token, ref_no, verse, revision_num, source_id))
     cursor.close()
     connection.commit()
-    return "concordances created and stored in DB"
+    return '{"success":True, "message":"concordances created and stored in DB"}'
 
 @app.route("/v1/getconcordance", methods=["POST"])
 @check_token
