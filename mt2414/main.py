@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import scrypt
 import requests
 import jwt
-from flask import Flask, request, session, redirect
+from flask import Flask, request, session
 from flask import g
 from flask_cors import CORS, cross_origin
 import nltk
@@ -258,7 +258,6 @@ def new_registration2(code):
     cursor.close()
     connection.commit()
     return '{"success":true, "message":"Email Verified"}'
-    # return redirect("https://www.google.com")
 
 @app.route("/v1/sources", methods=["POST"])
 @check_token
