@@ -435,7 +435,7 @@ def upload_tokens_translation():
         else:
             return '{"success":false, "message":"No Changes. Token translations are already up-to-date."}'
     else:
-        return '{"success":false, "message":"Upload tokens and translations"}'
+        return '{"success":false, "message":"File is Empty. Upload file with tokens and translations"}'
 
 @app.route("/v1/generateconcordance", methods=["POST"])
 @check_token
@@ -492,7 +492,7 @@ def get_concordance():
     if changes:
         return '{"success":true, "message":"concordances created and stored in DB"}'
     else:
-        return '{"success":fasle, "message":"No changes made. Concordances are already up-to-date"}'
+        return '{"success":false, "message":"No changes made. Concordances are already up-to-date"}'
 
 @app.route("/v1/getconcordance", methods=["POST"])
 @check_token
