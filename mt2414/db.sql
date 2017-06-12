@@ -78,11 +78,13 @@ CREATE TABLE autotokentranslations (
 
 CREATE TABLE taggedtokens (
 	id BIGSERIAL PRIMARY KEY,
-	token TEXT NOT NULL,
-	strongs_num VARCHAR NOT NULL,
+	language TEXT,
+	token TEXT,
+	strongs_num VARCHAR,
 	tranlated_token TEXT,
 	targetlang TEXT,
-	revision_num TEXT NOT NULL,
+	version TEXT,
+	revision_num TEXT,
 	created_at timestamp with time zone,
 	updated_at timestamp with time zone,
 	deleted_at timestamp with time zone,
