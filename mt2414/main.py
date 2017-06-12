@@ -59,7 +59,7 @@ def close_db(error):
 
 @app.route("/v1/auth", methods=["POST"])
 def auth():
-    email = request.form["username"]
+    email = request.form["email"]
     password = request.form["password"]
     connection = get_db()
     cursor = connection.cursor()
@@ -458,8 +458,28 @@ def upload_tokens_translation():
     else:
         return '{"success":false, "message":"File is Empty. Upload file with tokens and translations"}'
 
-@app.route("/v1/generateconcordance", methods=["POST"])
+@app.route("/v1/generatetaggedtoken", methods=["POST"])
 @check_token
+def upload_taggedtokens_translation():
+    req = request.get_json(True)
+    language = req["language"]
+    tokenwords = req["tokenwords"]
+    #strongs_num = req["strongs_num"]
+    targetlang = req["targetlang"]
+    version = req["version"]
+    revision = req["revision"]
+
+    connection = get_db()
+    cursor = connection.cursor()
+
+    for k,v in tokenwords.items():
+        cursor.execute("INSERT INTO taggedtokens (token,strongs_num,language,version,revision_num) VALUES (%s,%s,%s,%s,%s)",(v,k,language,version,revision))
+    cursor.close()
+    connection.commit()
+    return '{success:true, message:"Tagged token have been updated."}'
+
+
+
 def get_concordance():
     req = request.get_json(True)
     language = req["language"]
