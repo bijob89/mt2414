@@ -53,7 +53,7 @@ CREATE TABLE concordance (
 	source_id BIGINT REFERENCES sources(id) NOT NULL
 );
 
-CREATE TABLE clusters (
+CREATE TABLE cluster (
 	id BIGSERIAL PRIMARY KEY,
 	book_name TEXT NOT NULL,
 	token TEXT NOT NULL,
