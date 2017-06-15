@@ -59,7 +59,7 @@ def close_db(error):
 
 @app.route("/v1/auth", methods=["POST"])
 def auth():
-    email = request.form["username"]
+    email = request.form["email"]
     password = request.form["password"]
     connection = get_db()
     cursor = connection.cursor()
@@ -377,6 +377,48 @@ def availablesbooks():
     return json.dumps(books)
     cursor.close()
 
+    @app.route("/v1/getbookwiseautotokens", methods=["POST"])
+    @check_token
+    def bookwiseagt():
+        req = request.get_json(True)
+        sourcelang = req["sourcelang"]
+        version = req["version"]
+        revision = req["revision"]
+        books = req["books"]
+        notbooks = req["nbooks"]
+        connection = get_db()
+        cursor = connection.cursor()
+        cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
+        try:
+            source_id = cursor.fetchone()[0]
+        except:
+            return '{"success":false, "message":"Source is not available. Upload source."}'
+        toknwords = []
+        ntoknwords = []
+        if books and not notbooks:
+            for bkn in books:
+                cursor.execute("SELECT token FROM clusters WHERE book_name = %s",(bkn,))
+                tokens = cursor.fetchall()
+                for t in tokens:
+                    toknwords.append(t[0])
+            stoknwords = set(toknwords)
+            cursor.close()
+            return json.dumps(list(stoknwords))
+        elif books and notbooks:
+            for bkn in books:
+                cursor.execute("SELECT token FROM clusters WHERE book_name = %s",(bkn,))
+                tokens = cursor.fetchall()
+                for t in tokens:
+                    toknwords.append(t[0])
+            for nbkn in notbooks:
+                cursor.execute("SELECT token FROM clusters WHERE book_name = %s",(nbkn,))
+                tokens = cursor.fetchall()
+                for t in tokens:
+                    ntoknwords.append(t[0])
+            stoknwords = set(ntoknwords) -  set(toknwords)
+            cursor.close()
+            return json.dumps(list(stoknwords))
+
 @app.route("/v1/autotokens", methods=["GET", "POST"])
 @check_token
 def autotokens():
@@ -458,8 +500,28 @@ def upload_tokens_translation():
     else:
         return '{"success":false, "message":"File is Empty. Upload file with tokens and translations"}'
 
-@app.route("/v1/generateconcordance", methods=["POST"])
+@app.route("/v1/generatetaggedtoken", methods=["POST"])
 @check_token
+def upload_taggedtokens_translation():
+    req = request.get_json(True)
+    language = req["language"]
+    tokenwords = req["tokenwords"]
+    #strongs_num = req["strongs_num"]
+    targetlang = req["targetlang"]
+    version = req["version"]
+    revision = req["revision"]
+
+    connection = get_db()
+    cursor = connection.cursor()
+
+    for k,v in tokenwords.items():
+        cursor.execute("INSERT INTO taggedtokens (token,strongs_num,language,version,revision_num) VALUES (%s,%s,%s,%s,%s)",(v,k,language,version,revision))
+    cursor.close()
+    connection.commit()
+    return '{success:true, message:"Tagged token have been updated."}'
+
+
+
 def get_concordance():
     req = request.get_json(True)
     language = req["language"]
@@ -587,7 +649,6 @@ def translations():
 @check_token
 def corrections():
     return '{}\n'
-
 
 @app.route("/v1/suggestions", methods=["GET"])
 @check_token
