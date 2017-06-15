@@ -41,6 +41,18 @@ CREATE TABLE sourcetexts (
 	source_id BIGINT REFERENCES sources(id) NOT NULL
 );
 
+CREATE TABLE cluster (
+	id BIGSERIAL PRIMARY KEY,
+	book_name TEXT,
+	token TEXT,
+	revision_num TEXT,
+	created_at timestamp with time zone,
+	updated_at timestamp with time zone,
+	deleted_at timestamp with time zone,
+	source_id BIGINT REFERENCES sources(id) NOT NULL
+);
+
+
 CREATE TABLE concordance (
 	id BIGSERIAL PRIMARY KEY,
 	token TEXT NOT NULL,

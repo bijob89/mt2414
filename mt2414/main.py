@@ -49,13 +49,11 @@ def get_db():
         g.db = psycopg2.connect(dbname=postgres_database, user=postgres_user, password=postgres_password, host=postgres_host, port=postgres_port)
     return g.db
 
-
 @app.teardown_appcontext
 def close_db(error):
     """Closes the database again at the end of the request."""
     if hasattr(g, 'db'):
         g.db.close()
-
 
 @app.route("/v1/auth", methods=["POST"])
 def auth():
@@ -79,7 +77,6 @@ def auth():
         return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
     return '{"success":false, "message":"Incorrect Password"}'
 
-
 @app.route("/v1/registrations", methods=["POST"])
 def new_registration():
     email = request.form['email']
@@ -102,8 +99,6 @@ def new_registration():
     connection = get_db()
     password_salt = str(uuid.uuid4()).replace("-","")
     password_hash = scrypt.hash(password, password_salt)
-
-
     cursor = connection.cursor()
     cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
     if cursor.fetchone():
@@ -187,7 +182,6 @@ def check_token(f):
             raise TokenError('No Authorization header', 'Token missing')
 
         parts = auth_header_value.split()
-
         if (len(parts) == 1) and (parts[0].lower() != 'bearer'):
             access_id, key = parts[0].split(":")
             connection = get_db()
@@ -198,7 +192,6 @@ def check_token(f):
                 raise TokenError('Invalid token', 'Invalid token')
             key_hash = rst[0].hex()
             key_salt = bytes.fromhex(rst[1].hex())
-
             key_hash_new = scrypt.hash(key, key_salt).hex()
             if key_hash == key_hash_new:
                 request.email = rst[2]
@@ -212,7 +205,6 @@ def check_token(f):
             }
             algorithm = 'HS256'
             leeway = timedelta(seconds=10)
-
             try:
                 decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
                 request.email = decoded['sub']
@@ -220,7 +212,6 @@ def check_token(f):
                 raise TokenError('Invalid token', str(e))
         else:
             raise TokenError('Invalid header', 'Token contains spaces')
-
         #raise TokenError('Invalid JWT header', 'Token missing')
         return f(*args, **kwds)
     return wrapper
@@ -346,7 +337,6 @@ def sources():
             connection.commit()
         return '{"success":true, "message":"New source added to database"}'
 
-
 @app.route("/v1/get_languages", methods=["POST"])
 @check_token
 def availableslan():
@@ -376,6 +366,59 @@ def availablesbooks():
         books.append(al[rst])
     return json.dumps(books)
     cursor.close()
+
+@app.route("/v1/getbookwiseautotokens", methods=["POST"])
+@check_token
+def bookwiseagt():
+    req = request.get_json(True)
+    sourcelang = req["sourcelang"]
+    version = req["version"]
+    revision = req["revision"]
+    books = req["books"]
+    notbooks = req["nbooks"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
+    try:
+        source_id = cursor.fetchone()[0]
+    except:
+        return '{"success":false, "message":"Source is not available. Upload source."}'
+    toknwords = []
+    ntoknwords = []
+    availablelan = []
+    cursor.execute("SELECT c.book_name FROM sources s LEFT JOIN cluster c ON c.source_id = s.id WHERE s.language = %s AND s.version = %s",(sourcelang, version))
+    avlbk = cursor.fetchall()
+    for i in avlbk:
+        availablelan.append(i[0])
+    b = set(books) - set(availablelan)
+    c =set(notbooks) - set(availablelan)
+    if  not b and not c:
+        if books and not notbooks:
+            for bkn in books:
+                cursor.execute("SELECT token FROM cluster WHERE book_name = %s",(bkn,))
+                tokens = cursor.fetchall()
+                for t in tokens:
+                    toknwords.append(t[0])
+            stoknwords = set(toknwords)
+            cursor.close()
+            return json.dumps(list(stoknwords))
+        elif books and notbooks:
+            for bkn in books:
+                cursor.execute("SELECT token FROM cluster WHERE book_name = %s",(bkn,))
+                tokens = cursor.fetchall()
+                for t in tokens:
+                    toknwords.append(t[0])
+            for nbkn in notbooks:
+                cursor.execute("SELECT token FROM cluster WHERE book_name = %s",(nbkn,))
+                tokens = cursor.fetchall()
+                for t in tokens:
+                    ntoknwords.append(t[0])
+            stoknwords = set(ntoknwords) -  set(toknwords)
+            cursor.close()
+            return json.dumps(list(stoknwords))
+    else:
+        return '{"success":false, "message":" %s and %s is not available. Upload it."}'  %((list(b)),list(c))
+
 
 @app.route("/v1/autotokens", methods=["GET", "POST"])
 @check_token
@@ -458,9 +501,27 @@ def upload_tokens_translation():
     else:
         return '{"success":false, "message":"File is Empty. Upload file with tokens and translations"}'
 
+@app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])
+@check_token
+def upload_taggedtokens_translation():
+    req = request.get_json(True)
+    language = req["language"]
+    tokenwords = req["tokenwords"]
+    #strongs_num = req["strongs_num"]
+    targetlang = req["targetlang"]
+    version = req["version"]
+    revision = req["revision"]
+    connection = get_db()
+    cursor = connection.cursor()
+    for k,v in tokenwords.items():
+        cursor.execute("INSERT INTO taggedtokens (token,strongs_num,language,version,revision_num) VALUES (%s,%s,%s,%s,%s)",(v,k,language,version,revision))
+    cursor.close()
+    connection.commit()
+    return '{success:true, message:"Tagged token have been updated."}'
+
 @app.route("/v1/generateconcordance", methods=["POST"])
 @check_token
-def get_concordance():
+def generate_concordance():
     req = request.get_json(True)
     language = req["language"]
     version = req["version"]
@@ -517,7 +578,7 @@ def get_concordance():
 
 @app.route("/v1/getconcordance", methods=["POST"])
 @check_token
-def generate_concordance():
+def get_concordance():
     req = request.get_json(True)
     language = req["language"]
     version = req["version"]
@@ -574,7 +635,6 @@ def translations():
                 new_line_words.append(tokens.get(word, word))
             out_line = " ".join(new_line_words)
             out_text_lines.append(out_line)
-
         out_text = "\n".join(out_text_lines)
         out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~। ])',r'\1', out_text)
         tr[name] = out_final
