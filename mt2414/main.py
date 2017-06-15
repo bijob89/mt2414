@@ -377,6 +377,49 @@ def availablesbooks():
     return json.dumps(books)
     cursor.close()
 
+@app.route("/v1/getbookwiseautotokens", methods=["POST"])
+@check_token
+def bookwiseagt():
+    req = request.get_json(True)
+    sourcelang = req["sourcelang"]
+    version = req["version"]
+    revision = req["revision"]
+    books = req["books"]
+    notbooks = req["nbooks"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
+    try:
+        source_id = cursor.fetchone()[0]
+    except:
+        return '{"success":false, "message":"Source is not available. Upload source."}'
+    toknwords = []
+    ntoknwords = []
+    if books and not notbooks:
+        for bkn in books:
+            cursor.execute("SELECT token FROM cluster WHERE book_name = %s",(bkn,))
+            tokens = cursor.fetchall()
+            for t in tokens:
+                toknwords.append(t[0])
+        stoknwords = set(toknwords)
+        cursor.close()
+        return json.dumps(list(stoknwords))
+    elif books and notbooks:
+        for bkn in books:
+            cursor.execute("SELECT token FROM cluster WHERE book_name = %s",(bkn,))
+            tokens = cursor.fetchall()
+            for t in tokens:
+                toknwords.append(t[0])
+        for nbkn in notbooks:
+            cursor.execute("SELECT token FROM cluster WHERE book_name = %s",(nbkn,))
+            tokens = cursor.fetchall()
+            for t in tokens:
+                ntoknwords.append(t[0])
+        stoknwords = set(ntoknwords) -  set(toknwords)
+        cursor.close()
+        return json.dumps(list(stoknwords))
+
+
 @app.route("/v1/autotokens", methods=["GET", "POST"])
 @check_token
 def autotokens():
