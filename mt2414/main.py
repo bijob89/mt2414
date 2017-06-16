@@ -386,7 +386,7 @@ def bookwiseagt():
     toknwords = []
     ntoknwords = []
     availablelan = []
-    cursor.execute("SELECT c.book_name FROM sources s LEFT JOIN cluster c ON c.source_id = s.id WHERE s.language = %s AND s.version = %s",(sourcelang, version))
+    cursor.execute("SELECT book_name FROM cluster WHERE source_id =%s AND revision_num = %s",(source_id, revision))
     avlbk = cursor.fetchall()
     for i in avlbk:
         availablelan.append(i[0])
@@ -395,7 +395,7 @@ def bookwiseagt():
     if  not b and not c:
         if books and not notbooks:
             for bkn in books:
-                cursor.execute("SELECT token FROM cluster WHERE book_name = %s",(bkn,))
+                cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id, revision, bkn,))
                 tokens = cursor.fetchall()
                 for t in tokens:
                     toknwords.append(t[0])
@@ -404,12 +404,12 @@ def bookwiseagt():
             return json.dumps(list(stoknwords))
         elif books and notbooks:
             for bkn in books:
-                cursor.execute("SELECT token FROM cluster WHERE book_name = %s",(bkn,))
+                cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id, revision, bkn,))
                 tokens = cursor.fetchall()
                 for t in tokens:
                     toknwords.append(t[0])
             for nbkn in notbooks:
-                cursor.execute("SELECT token FROM cluster WHERE book_name = %s",(nbkn,))
+                cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id, revision, nbkn,))
                 tokens = cursor.fetchall()
                 for t in tokens:
                     ntoknwords.append(t[0])
