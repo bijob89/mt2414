@@ -329,8 +329,6 @@ def sources():
             base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
             book_name = (re.search('(?<=\id )\w+', base_convert)).group(0)
             text_file = re.sub('(?s).*?(\\c 1)', '\\id ' + str(book_name) + '\n\n\\1', base_convert, 1)
-            text_file = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
-            book_name = (re.search('(?<=\id )\w+', text_file)).group(0)
             revision_num = 1
             cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
             remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])',r' \1 ', text_file)
