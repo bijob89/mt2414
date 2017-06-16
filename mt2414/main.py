@@ -418,10 +418,10 @@ def bookwiseagt():
                     toknwords.append(t[0])
             for nbkn in notbooks:
                 cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id, revision, nbkn,))
-                tokens = cursor.fetchall()
-                for t in tokens:
+                ntokens = cursor.fetchall()
+                for t in ntokens:
                     ntoknwords.append(t[0])
-            stoknwords = set(ntoknwords) -  set(toknwords)
+            stoknwords = set(toknwords) -  set(ntoknwords)
             cursor.close()
             tr = {}
             for t in list(stoknwords):
