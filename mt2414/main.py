@@ -406,10 +406,7 @@ def bookwiseagt():
                     toknwords.append(t[0])
             stoknwords = set(toknwords)
             cursor.close()
-            tr = {}
-            for t in list(stoknwords):
-                tr[str(t)] = "Concord"
-            return json.dumps(tr)
+            return json.dumps(list(stoknwords))
         elif books and notbooks:
             for bkn in books:
                 cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id, revision, bkn,))
@@ -423,10 +420,7 @@ def bookwiseagt():
                     ntoknwords.append(t[0])
             stoknwords = set(toknwords) -  set(ntoknwords)
             cursor.close()
-            tr = {}
-            for t in list(stoknwords):
-                tr[str(t)] = "Concord"
-            return json.dumps(tr)
+            return json.dumps(list(stoknwords))
     else:
         return '{"success":false, "message":" %s and %s is not available. Upload it."}'  %((list(b)),list(c))
 
