@@ -276,8 +276,9 @@ def sources():
             books.append(all_books[i][0])
         for files in content:
             base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
-            book_name = (re.search('(?<=\id )\w+', base_convert)).group(0)
-            text_file = re.sub('(?s).*?(\\c 1)', '\\id ' + str(book_name) + '\n\n\\1', base_convert, 1)
+            book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
+            text_file = re.sub(r'(\n\\rem.*)','', base_convert)
+            text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
             if book_name in books:
                 count = 0
                 count1 = 0
@@ -291,7 +292,7 @@ def sources():
                     revision_num = count + 1
                     cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
                     changes.append(book_name)
-                    remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', text_file)
+                    remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', text_file)
                     remove_punct1 = re.sub(str(book_name), "", remove_punct )
                     token_list = nltk.word_tokenize(remove_punct1)
                     ignore = [ "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
@@ -306,7 +307,7 @@ def sources():
                 revision_num = 1
                 cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
                 changes.append(book_name)
-                remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', text_file)
+                remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', text_file)
                 remove_punct1 = re.sub(str(book_name), "", remove_punct )
                 token_list = nltk.word_tokenize(remove_punct1)
                 ignore = [ "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
@@ -327,12 +328,13 @@ def sources():
         for files in content:
             cursor = connection.cursor()
             base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
-            book_name = (re.search('(?<=\id )\w+', base_convert)).group(0)
-            text_file = re.sub('(?s).*?(\\c 1)', '\\id ' + str(book_name) + '\n\n\\1', base_convert, 1)
+            book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
+            text_file = re.sub(r'(\n\\rem.*)','', base_convert)
+            text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
             revision_num = 1
             cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
-            remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])',r' \1 ', text_file)
-            remove_punct1 = re.sub(r'([!"#$%&\\\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', remove_punct)
+            remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])',r' \1 ', text_file)
+            remove_punct1 = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', remove_punct)
             token_list = nltk.word_tokenize(remove_punct1)
             ignore = [ book_name, "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
             token_set = set([x.encode('utf-8') for x in token_list])
@@ -443,21 +445,8 @@ def autotokens():
     token_set = cursor.fetchall()
     if not token_set:
         return '{"success":false, "message":"Not a valid revision number"}'
-    # tr = {}
-    # for i in token_set:
-    #     token = i[0]
-    #     cursor.execute("SELECT book_name, concordances FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id, revision))
-    #     concordance_set = cursor.fetchall()
-    #     concordance_list = []
-    #     for i in range(0, len(concordance_set)):
-    #         concordance = concordance_set[i][0] + " " + concordance_set[i][1]
-    #         concordance_list.append(concordance)
-    #     concord = "\n".join(concordance_list)
-    #     tr[token] = concord
-    # return json.dumps(tr)
     token_set1 = set([token_set[i] for i in range(0, len(token_set))])
     tr = {}
-    # agt = []
     for t in token_set1:
         tr[str(t)] = "concord"
     cursor.close()
@@ -637,18 +626,22 @@ def translations():
     for rst in cursor.fetchall():
         out.append((rst[0], rst[1]))
     tr = {}
+    tag_check = ['~', '$', '2', '(', '_', '“', '5', '.', "'", ':', '%', '#', ')', 'a', '^', '’', '<', '{', '”', '।', '?', '|', 'b', ';', '-', ']', '`', '0', '[', '/', '"', '6', '1', '=', '8', '+', '*', '9', 'c', '@', '3', '!', '>', ',', '4', '\\', '‘', '7', '&', '}', '\\v', '\\c', '\\p', '\\s', '\\id']
     for name, book in out:
         out_text_lines = []
-        content = re.sub(r'([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’1234567890 ])',r' \1 ', book)
+        content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’1234567890 ])',r' \1 ', book)
         for line in content.split("\n"):
             line_words = nltk.word_tokenize(line)
             new_line_words = []
             for word in line_words:
-                new_line_words.append(tokens.get(word, word))
+                if word not in tag_check:
+                    new_line_words.append(tokens.get(word, " >>>"+str(word)+"<<<"))
+                else:
+                    new_line_words.append(tokens.get(word, word))
             out_line = " ".join(new_line_words)
             out_text_lines.append(out_line)
         out_text = "\n".join(out_text_lines)
-        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’ ])',r'\1', out_text)
+        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’ ]\s?)',r'\1', out_text)
         out_final = re.sub(r'-\s', '-', out_final)
         out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
         tr[name] = out_final
