@@ -330,6 +330,7 @@ def sources():
             base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
             book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
             text_file = re.sub(r'(\n\\rem.*)','', base_convert)
+            text_file = re.sub(r'(\\rem.*)','', base_convert)
             text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
             revision_num = 1
             cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
@@ -626,9 +627,10 @@ def translations():
     for rst in cursor.fetchall():
         out.append((rst[0], rst[1]))
     tr = {}
-    tag_check = ['~', '$', '2', '(', '_', '“', '5', '.', "'", ':', '%', '#', ')', 'a', '^', '’', '<', '{', '”', '।', '?', '|', 'b', ';', '-', ']', '`', '0', '[', '/', '"', '6', '1', '=', '8', '+', '*', '9', 'c', '@', '3', '!', '>', ',', '4', '\\', '‘', '7', '&', '}', '\\v', '\\c', '\\p', '\\s', '\\id']
+    tag_check = ['~', '$','\q', '\ide', '\toc', '\mt', '\h', '2', '(', '_', '“', '5', '.', "'", ':', '%', '#', ')', 'a', '^', '’', '<', '{', '”', '।', '?', '|', 'b', ';', '-', ']', '`', '0', '[', '/', '"', '6', '1', '=', '8', '+', '*', '9', 'c', '@', '3', '!', '>', ',', '4', '\\', '‘', '7', '&', '}', '\\v', '\\c', '\\p', '\\s', '\\id']
     for name, book in out:
         out_text_lines = []
+        hyphenated_words = re.findall(r'\w+-\w+', book)
         content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’1234567890 ])',r' \1 ', book)
         for line in content.split("\n"):
             line_words = nltk.word_tokenize(line)
@@ -641,11 +643,21 @@ def translations():
             out_line = " ".join(new_line_words)
             out_text_lines.append(out_line)
         out_text = "\n".join(out_text_lines)
-        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’ ]\s?)',r'\1', out_text)
+        for w in hyphenated_words:
+            word = " >>>"+str(w)+"<<<"
+            replace = tokens.get(w, " >>>"+str(w)+"<<<")
+            out_text = re.sub(r'' + str(word), str(replace), out_text)
+        out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।\”\’ ])',r'\1', out_text)
+        out_final = re.sub(r'([\‘\“])\s?', r'\1', out_final)
         out_final = re.sub(r'-\s', '-', out_final)
         out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
+        out_final = re.sub(r'\[ ', r' \[', out_final)
+        out_final = re.sub(r'\( ', r' \(', out_final)
+        out_final = re.sub(r' >>>\\toc<<< ', r'\n\\toc', out_final)
         tr[name] = out_final
-        cursor.execute("INSERT INTO translationtexts (name, content, language, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (name, out_final, targetlang, revision, source_id))
+        non_translated = re.findall(r'>>>\w+<<<', out_final)
+        if not non_translated:
+            cursor.execute("INSERT INTO translationtexts (name, content, language, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (name, out_final, targetlang, revision, source_id))
     cursor.close()
     connection.commit()
     return json.dumps(tr)
