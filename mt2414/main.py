@@ -358,8 +358,8 @@ def availableslan():
         for rst in range(0, len(al)):
             books.add(al[rst])
         mylist=list(books)
-        return json.dumps(mylist)
         cursor.close()
+        return json.dumps(mylist)
     else:
         return '{"success":false, "message":"No sources"}'
 
@@ -372,9 +372,9 @@ def availablesbooks():
     connection =get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT st.book_name, st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s",(language, version))
+    al = cursor.fetchall()
     books=[]
     if al:
-        al = cursor.fetchall()
         for rst in range(0, len(al)):
             books.append(al[rst])
         cursor.close()
@@ -458,9 +458,9 @@ def autotokens():
     else:
          return '{"success":false, "message":"Source not available. Upload source"}'
 
-@app.route("/v1/testapi", methods=["POST"])
+@app.route("/v1/tokenlist", methods=["POST"])
 @check_token
-def testapi():
+def tokenlist():
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
     version = req["version"]
@@ -495,9 +495,9 @@ def testapi():
             return '{"success":false, "message":"Tokens is not available. Upload token translation ."}'
     return '{"success":false, "message":"Source is not available. Upload source."}'
 
-@app.route("/v1/counttestapi", methods=["POST"])
+@app.route("/v1/tokencount", methods=["POST"])
 @check_token
-def counttoken():
+def tokencount():
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
     version = req["version"]
