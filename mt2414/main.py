@@ -5,6 +5,7 @@ import json
 import psycopg2
 from functools import wraps
 from datetime import datetime, timedelta
+import datetime
 import scrypt
 import requests
 import jwt
@@ -73,7 +74,7 @@ def auth():
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
     if password_hash == password_hash_new:
-        access_token = jwt.encode({'sub': email}, jwt_hs256_secret, algorithm='HS256')
+        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days = 1)}, jwt_hs256_secret, algorithm='HS256')
         return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
     return '{"success":false, "message":"Incorrect Password"}'
 
@@ -206,7 +207,8 @@ def check_token(f):
             # check for JWT token
             token = parts[1]
             options = {
-                'verify_sub': True
+                'verify_sub': True,
+                'verify_exp': True
             }
             algorithm = 'HS256'
             leeway = timedelta(seconds=10)
