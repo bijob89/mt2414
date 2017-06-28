@@ -393,6 +393,7 @@ def bookwiseagt():
     revision = req["revision"]
     books = req["books"]
     notbooks = req["nbooks"]
+    targetlang = req["targetlang"]
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
@@ -407,6 +408,11 @@ def bookwiseagt():
             availablelan.append(i[0])
         b = set(books) - set(availablelan)
         c =set(notbooks) - set(availablelan)
+        translatedtokenlist = []
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id ))
+        translatedtoken = cursor.fetchall()
+        for tk in translatedtoken:
+            translatedtokenlist.append(tk[0])
         if  not b and not c:
             if books and not notbooks:
                 for bkn in books:
@@ -429,8 +435,9 @@ def bookwiseagt():
                     for t in ntokens:
                         ntoknwords.append(t[0])
                 stoknwords = set(toknwords) -  set(ntoknwords)
+                output = stoknwords - set(translatedtokenlist)
                 cursor.close()
-                return json.dumps(list(stoknwords))
+                return json.dumps(list(output))
         else:
             return '{"success":false, "message":" %s and %s is not available. Upload it."}'  %((list(b)),list(c))
     return '{"success":false, "message":"Source is not available. Upload source."}'
@@ -477,10 +484,15 @@ def tokenlist():
         books = cursor.fetchall()
         cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id ))
         translated_token = cursor.fetchall()
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token = '' AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id ))
+        not_trantoken = cursor.fetchall()
         if translated_token:
             token = []
             for tk in translated_token:
                 token.append(tk[0])
+            nottranslated = []
+            for nt in not_trantoken:
+                nottranslated.append(nt[0])
             token_list = []
             result = {}
             for bk in books:
@@ -489,12 +501,14 @@ def tokenlist():
                 cluster_token = cursor. fetchall()
                 for ct in cluster_token:
                     token_list.append(ct[0])
-                output = set(token_list) - set(token)
+                output1 = set(token_list) - set(token)
+                output2 = set(token_list) & set(not_trantoken)
+                output = set(output1) | set(output2)
                 result[bk[0]] = list(output)
             cursor.close()
             return json.dumps(result)
         else:
-            return '{"success":false, "message":"Tokens is not available. Upload token translation ."}'
+            return '{"success":false, "message":"Translated tokens are not available. Upload token translation ."}'
     return '{"success":false, "message":"Source is not available. Upload source."}'
 
 @app.route("/v1/tokencount", methods=["POST"])
@@ -546,43 +560,31 @@ def upload_tokens_translation():
     targetlang = req["targetlang"]
     connection = get_db()
     cursor = connection.cursor()
-    changes = []
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s ", (language, version))
-    source_id = cursor.fetchone()[0]
-    if source_id:
-        cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s", (source_id, revision))
-        token_set = []
-        for i in cursor.fetchall():
-            token_set.append(i[0])
-        if tokenwords:
-            cursor.execute("SELECT token from autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id, revision, targetlang))
-            if cursor.fetchall():
-                for k, v in tokenwords.items():
-                    if v and k in token_set:
-                        cursor.execute("SELECT token from autotokentranslations WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (k, source_id, revision, targetlang))
-                        if cursor.fetchone():
-                            cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id, targetlang, revision))
-                            changes.append(k)
-                        else:
-                            cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id))
-                            changes.append(k)
-            else:
-                cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s", (source_id, revision))
-                token_set = cursor.fetchall()
-                for i in range(0, len(token_set)):
-                    token = str(token_set[i][0])
-                    translated_token = tokenwords.get(token, None)
-                    cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (token, translated_token, targetlang, str(revision), source_id))
-                    changes.append(token)
-            cursor.close()
-            connection.commit()
-            if changes:
-                return '{"success":true, "message":"Token translations have been updated."}'
-            else:
-                return '{"success":false, "message":"No Changes. Token translations are already up-to-date."}'
-        else:
-            return '{"success":false, "message":"File is Empty. Upload file with tokens and translations"}'
-    return '{"success":false, "message":"Unable to locate the language, version and revision number specified"}'
+    source_id = cursor.fetchone()
+    if not source_id:
+        return '{"success":false, "message":"Unable to locate the language, version and revision number specified"}'
+    cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
+    transtokens = cursor.fetchall()
+    if transtokens:
+        for k, v in tokenwords.items():
+            if v:
+                cursor.execute("SELECT token from autotokentranslations WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (k, source_id[0], revision, targetlang))
+                if cursor.fetchone():
+                    cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
+                else:
+                    cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+        cursor.close()
+        connection.commit()
+        return '{"success":true, "message":"Token translations have been updated."}'
+    else:
+        cursor = connection.cursor()
+        for k, v in tokenwords.items():
+            if v:
+                cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+        cursor.close()
+        connection.commit()
+        return '{"success":true, "message":"Token translation have been uploaded successfully"}'
 
 @app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])
 @check_token
