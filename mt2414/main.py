@@ -713,6 +713,7 @@ def translations():
         for name, book in out:
             out_text_lines = []
             hyphenated_words = re.findall(r'\w+-\w+', book)
+            book_name = (re.search('(?<=\id )\w{3}', book)).group(0)
             content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’1234567890 ])',r' \1 ', book)
             for line in content.split("\n"):
                 line_words = nltk.word_tokenize(line)
@@ -735,7 +736,10 @@ def translations():
             out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
             out_final = re.sub(r'\[ ', r' \[', out_final)
             out_final = re.sub(r'\( ', r' \(', out_final)
+            out_final = re.sub(r'(\n\\rem.*)','', out_final)
             out_final = re.sub(r' >>>\\toc<<< ', r'\n\\toc', out_final)
+            out_final = re.sub(r'\\ide .*','\\\\ide UTF-8', out_final)
+            out_final = re.sub('(\\\\id .*)','\\id ' + str(book_name), out_final)
             tr[name] = out_final
             non_translated = re.findall(r'>>>\w+<<<', out_final)
             if not non_translated:
