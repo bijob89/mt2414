@@ -102,15 +102,14 @@ def new_registration():
     password_hash = scrypt.hash(password, password_salt)
     cursor = connection.cursor()
     cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
-    if cursor.fetchone():
-        return '{"success":false, "message":"Email Already Exists"}'
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO users (email, verification_code, password_hash, password_salt, created_at) VALUES (%s, %s, %s, %s, current_timestamp)",(email, verification_code, password_hash, password_salt))
+        cursor.close()
+        connection.commit()
+        resp = requests.post(url, data=json.dumps(payload), headers=headers)
+        return '{"success":true, "message":"Verification Email Sent"}'
     else:
-        cursor.execute("INSERT INTO users (email, verification_code, password_hash, password_salt, created_at) VALUES (%s, %s, %s, %s, current_timestamp)",
-                (email, verification_code, password_hash, password_salt))
-    cursor.close()
-    connection.commit()
-    resp = requests.post(url, data=json.dumps(payload), headers=headers)
-    return '{"success":true, "message":"Verification Email Sent"}'
+        return '{"success":false, "message":"Email Already Exists"}'
 
 @app.route("/v1/resetpassword", methods = ["POST"])
 def reset_password():
@@ -118,7 +117,9 @@ def reset_password():
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT email from users WHERE email = %s", (email,))
-    if cursor.fetchone():
+    if not cursor.fetchone():
+        return '{"success":false, "message":"Email has not yet been registered"}'
+    else:
         headers = {"api-key": sendinblue_key}
         url = "https://api.sendinblue.com/v2.0/email"
         verification_code = str(uuid.uuid4()).replace("-","")
@@ -138,9 +139,7 @@ def reset_password():
         cursor.close()
         connection.commit()
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
-    else:
-        return '{"success":false, "message":"Email has not yet been registered"}'
-    return '{"success":true, "message":"Link to reset password has been sent to the registered mail ID"}\n'
+        return '{"success":true, "message":"Link to reset password has been sent to the registered mail ID"}\n'
 
 @app.route("/v1/forgotpassword/<string:code>", methods = ["POST"])
 def reset_password2(code):
@@ -149,18 +148,16 @@ def reset_password2(code):
     cursor = connection.cursor()
     cursor.execute("SELECT email FROM users WHERE verification_code = %s AND email_verified = True", (code,))
     rst = cursor.fetchone()
-    if len(rst) > 0:
+    if not rst:
+        return '{"success":false, "message":"Failed to reset password"}'
+    else:
         email = rst[0]
         password_salt = str(uuid.uuid4()).replace("-","")
         password_hash = scrypt.hash(password, password_salt)
         cursor.execute("UPDATE users SET verification_code = %s, password_hash = %s, password_salt = %s, updated_at = current_timestamp WHERE email = %s", (None, password_hash, password_salt, email))
         cursor.close()
         connection.commit()
-        return '{"success":true, "message":"Password has been reset"}\n'
-    else:
-        return '{"success":false, "message":"Failed to reset password"}\n'
-
-
+        return '{"success":true, "message":"Password has been reset"}'
 
 class TokenError(Exception):
 
@@ -269,7 +266,30 @@ def sources():
     rst = cursor.fetchone()
     cursor.close()
     changes = []
-    if rst:
+    if not rst:
+        cursor = connection.cursor()
+        cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
+        source_id = cursor.fetchone()[0]
+        for files in content:
+            cursor = connection.cursor()
+            base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
+            book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
+            text_file = re.sub(r'(\n\\rem.*)','', base_convert)
+            text_file = re.sub(r'(\\rem.*)','', base_convert)
+            text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
+            revision_num = 1
+            cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
+            remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])',r' \1 ', text_file)
+            remove_punct1 = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', remove_punct)
+            token_list = nltk.word_tokenize(remove_punct1)
+            ignore = [ book_name, "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
+            token_set = set([x.encode('utf-8') for x in token_list])
+            for t in token_set:
+                cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
+            cursor.close()
+            connection.commit()
+        return '{"success":true, "message":"New source added to database"}'
+    else:
         cursor = connection.cursor()
         source_id = rst[0]
         books = []
@@ -324,29 +344,6 @@ def sources():
             return '{"success":true, "message":"Existing source updated"}'
         else:
             return '{"success":false, "message":"No Changes. Existing source is already up-to-date."}'
-    else:
-        cursor = connection.cursor()
-        cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
-        source_id = cursor.fetchone()[0]
-        for files in content:
-            cursor = connection.cursor()
-            base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
-            book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
-            text_file = re.sub(r'(\n\\rem.*)','', base_convert)
-            text_file = re.sub(r'(\\rem.*)','', base_convert)
-            text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
-            revision_num = 1
-            cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
-            remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])',r' \1 ', text_file)
-            remove_punct1 = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', remove_punct)
-            token_list = nltk.word_tokenize(remove_punct1)
-            ignore = [ book_name, "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
-            token_set = set([x.encode('utf-8') for x in token_list])
-            for t in token_set:
-                cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
-            cursor.close()
-            connection.commit()
-        return '{"success":true, "message":"New source added to database"}'
 
 @app.route("/v1/get_languages", methods=["POST"])
 @check_token
@@ -355,15 +352,15 @@ def availableslan():
     cursor = connection.cursor()
     cursor.execute("SELECT s.language, s.version FROM sources s  LEFT JOIN sourcetexts st ON st.source_id = s.id")
     books=set()
-    al = cursor.fetchall()
-    if al:
-        for rst in range(0, len(al)):
-            books.add(al[rst])
+    language = cursor.fetchall()
+    if not language:
+        return '{"success":false, "message":"No sources"}'
+    else:
+        for rst in range(0, len(language)):
+            books.add(language[rst])
         mylist=list(books)
         cursor.close()
         return json.dumps(mylist)
-    else:
-        return '{"success":false, "message":"No sources"}'
 
 @app.route("/v1/get_books", methods=["POST"])
 @check_token
@@ -376,13 +373,13 @@ def availablesbooks():
     cursor.execute("SELECT st.book_name, st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s",(language, version))
     al = cursor.fetchall()
     books=[]
-    if al:
+    if not al:
+        return '{"success":false, "message":"No books available"}'
+    else:
         for rst in range(0, len(al)):
             books.append(al[rst])
         cursor.close()
         return json.dumps(books)
-    else:
-        return '{"success":false, "message":"No books available"}'
 
 @app.route("/v1/getbookwiseautotokens", methods=["POST"])
 @check_token
@@ -397,26 +394,28 @@ def bookwiseagt():
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
-    source_id = cursor.fetchone()[0]
-    if source_id:
+    source_id = cursor.fetchone()
+    if not source_id:
+        return '{"success":false, "message":"Source is not available. Upload source."}'
+    else:
         toknwords = []
         ntoknwords = []
         availablelan = []
-        cursor.execute("SELECT book_name FROM cluster WHERE source_id =%s AND revision_num = %s",(source_id, revision))
+        cursor.execute("SELECT book_name FROM cluster WHERE source_id =%s AND revision_num = %s",(source_id[0], revision))
         avlbk = cursor.fetchall()
         for i in avlbk:
             availablelan.append(i[0])
         b = set(books) - set(availablelan)
         c =set(notbooks) - set(availablelan)
         translatedtokenlist = []
-        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id ))
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0] ))
         translatedtoken = cursor.fetchall()
         for tk in translatedtoken:
             translatedtokenlist.append(tk[0])
         if  not b and not c:
             if books and not notbooks:
                 for bkn in books:
-                    cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id, revision, bkn,))
+                    cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id[0], revision, bkn,))
                     tokens = cursor.fetchall()
                     for t in tokens:
                         toknwords.append(t[0])
@@ -425,12 +424,12 @@ def bookwiseagt():
                 return json.dumps(list(stoknwords))
             elif books and notbooks:
                 for bkn in books:
-                    cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id, revision, bkn,))
+                    cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id[0], revision, bkn,))
                     tokens = cursor.fetchall()
                     for t in tokens:
                         toknwords.append(t[0])
                 for nbkn in notbooks:
-                    cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id, revision, nbkn,))
+                    cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id[0], revision, nbkn,))
                     ntokens = cursor.fetchall()
                     for t in ntokens:
                         ntoknwords.append(t[0])
@@ -440,7 +439,6 @@ def bookwiseagt():
                 return json.dumps(list(output))
         else:
             return '{"success":false, "message":" %s and %s is not available. Upload it."}'  %((list(b)),list(c))
-    return '{"success":false, "message":"Source is not available. Upload source."}'
 
 @app.route("/v1/autotokens", methods=["GET", "POST"])
 @check_token
@@ -452,9 +450,11 @@ def autotokens():
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (language, version))
-    source_id = cursor.fetchone()[0]
-    if source_id:
-        cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s", (source_id, revision))
+    source_id = cursor.fetchone()
+    if not source_id:
+        return '{"success":false, "message":"Source not available. Upload source"}'
+    else:
+        cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s", (source_id[0], revision))
         token_set = cursor.fetchall()
         if not token_set:
             return '{"success":false, "message":"Not a valid revision number"}'
@@ -464,8 +464,6 @@ def autotokens():
             tr[str(t)] = "concord"
         cursor.close()
         return json.dumps(tr)
-    else:
-         return '{"success":false, "message":"Source not available. Upload source"}'
 
 @app.route("/v1/tokenlist", methods=["POST"])
 @check_token
@@ -478,15 +476,19 @@ def tokenlist():
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
-    source_id = cursor.fetchone()[0]
-    if source_id:
-        cursor.execute("SELECT  st.book_name FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s AND st.revision_num = %s",(sourcelang, version, revision ))
+    source_id = cursor.fetchone()
+    if not source_id:
+        return '{"success":false, "message":"Source is not available. Upload source."}'
+    else:
+        cursor.execute("SELECT  st.book_name FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s AND st.revision_num = %s",(sourcelang, version, revision))
         books = cursor.fetchall()
-        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id ))
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
         translated_token = cursor.fetchall()
-        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token = '' AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id ))
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token = '' AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
         not_trantoken = cursor.fetchall()
-        if translated_token:
+        if not translated_token:
+            return '{"success":false, "message":"Translated tokens are not available. Upload token translation ."}'
+        else:
             token = []
             for tk in translated_token:
                 token.append(tk[0])
@@ -497,7 +499,7 @@ def tokenlist():
             result = {}
             for bk in books:
                 token_list = []
-                cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s",(revision, source_id, bk[0]))
+                cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s",(revision, source_id[0], bk[0]))
                 cluster_token = cursor. fetchall()
                 for ct in cluster_token:
                     token_list.append(ct[0])
@@ -507,9 +509,6 @@ def tokenlist():
                 result[bk[0]] = list(output)
             cursor.close()
             return json.dumps(result)
-        else:
-            return '{"success":false, "message":"Translated tokens are not available. Upload token translation ."}'
-    return '{"success":false, "message":"Source is not available. Upload source."}'
 
 @app.route("/v1/tokencount", methods=["POST"])
 @check_token
@@ -522,13 +521,17 @@ def tokencount():
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
-    source_id = cursor.fetchone()[0]
-    if source_id:
+    source_id = cursor.fetchone()
+    if not source_id:
+        return '{"success":false, "message":"Source is not available. Upload source."}'
+    else:
         cursor.execute("SELECT  st.book_name FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s AND st.revision_num = %s",(sourcelang, version, revision ))
         books = cursor.fetchall()
-        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id ))
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
         translated_token = cursor.fetchall()
-        if translated_token:
+        if not translated_token:
+            return '{"success":false, "message":"Tokens is not available. Upload token translation ."}'
+        else:
             token = []
             for tk in translated_token:
                 token.append(tk[0])
@@ -536,7 +539,7 @@ def tokencount():
             result = {}
             for bk in books:
                 token_list = []
-                cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s",(revision, source_id, bk[0]))
+                cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s",(revision, source_id[0], bk[0]))
                 cluster_token = cursor. fetchall()
                 for ct in cluster_token:
                     token_list.append(ct[0])
@@ -545,9 +548,6 @@ def tokencount():
                 result[bk[0]] = count
             cursor.close()
             return json.dumps(result)
-        else:
-            return '{"success":false, "message":"Tokens is not available. Upload token translation ."}'
-    return '{"success":false, "message":"Source is not available. Upload source."}'
 
 @app.route("/v1/uploadtokentranslation", methods=["POST"])
 @check_token
@@ -612,11 +612,13 @@ def generate_concordance():
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id from sources WHERE language = %s and version = %s", (language, version))
-    source_id = cursor.fetchone()[0]
-    if source_id:
-        cursor.execute("SELECT token from cluster WHERE source_id = %s", (source_id,))
+    source_id = cursor.fetchone()
+    if not source_id:
+        return '{"success":false, "message":"Unable to find sources. Upload source."}'
+    else:
+        cursor.execute("SELECT token from cluster WHERE source_id = %s", (source_id[0],))
         token_set = cursor.fetchall()
-        cursor.execute("SELECT book_name, content, revision_num FROM sourcetexts WHERE source_id = %s", (source_id,))
+        cursor.execute("SELECT book_name, content, revision_num FROM sourcetexts WHERE source_id = %s", (source_id[0],))
         content = cursor.fetchall()
         changes = []
         content_text = []
@@ -645,11 +647,11 @@ def generate_concordance():
                     ref_no = line_split.group(3)
                     verse = line_split.group(5)
                     revision_num = line_split.group(1)
-                    cursor.execute("SELECT book_name FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id, revision_num))
+                    cursor.execute("SELECT book_name FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id[0], revision_num))
                     ref_book = cursor.fetchall()
                     db_book = [ref_book[x][0] for x in range(0,len(ref_book))]
                     if ref_no not in db_book:
-                        cursor.execute("INSERT INTO concordance (token, book_name, concordances, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (token, ref_no, verse, revision_num, source_id))
+                        cursor.execute("INSERT INTO concordance (token, book_name, concordances, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (token, ref_no, verse, revision_num, source_id[0]))
                         changes.append(book_name)
         cursor.close()
         connection.commit()
@@ -657,7 +659,6 @@ def generate_concordance():
             return '{"success":true, "message":"concordances created and stored in DB"}'
         else:
             return '{"success":false, "message":"No changes made. Concordances are already up-to-date"}'
-    return '{"success":false, "message":"Unable to find sources. Upload source."}'
 
 @app.route("/v1/getconcordance", methods=["POST"])
 @check_token
@@ -670,9 +671,11 @@ def get_concordance():
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id from sources WHERE language = %s AND version = %s", (language, version))
-    source_id = cursor.fetchone()[0]
-    if source_id:
-        cursor.execute("SELECT book_name, concordances FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id, str(revision)))
+    source_id = cursor.fetchone()
+    if not source_id:
+        return '{"success":false, "message":"Source is not available. Upload it"}'
+    else:
+        cursor.execute("SELECT book_name, concordances FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id[0], str(revision)))
         concord = cursor.fetchall()
         if not concord:
             return '{"success":false, "message":"Token is not available"}'
@@ -683,8 +686,6 @@ def get_concordance():
             con[str(book)] = str(concordances)
         cursor.close()
         return json.dumps(con)
-    else:
-        return '{"success":false, "message":"Source is not available. Upload it"}'
 
 @app.route("/v1/translations", methods=["POST"])
 @check_token
@@ -698,13 +699,15 @@ def translations():
     cursor = connection.cursor()
     tokens = {}
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
-    source_id = cursor.fetchone()[0]
-    if source_id:
-        cursor.execute("SELECT token, translated_token FROM autotokentranslations WHERE targetlang = %s AND source_id = %s AND translated_token IS NOT NULL",(targetlang, source_id))
+    source_id = cursor.fetchone()
+    if not source_id:
+        return '{"success":false, "message":"Source is not available. Upload it"}'
+    else:
+        cursor.execute("SELECT token, translated_token FROM autotokentranslations WHERE targetlang = %s AND source_id = %s AND translated_token IS NOT NULL",(targetlang, source_id[0]))
         for t, tr in cursor.fetchall():
             if tr:
                 tokens[t] = tr
-        cursor.execute("SELECT book_name, content FROM sourcetexts WHERE source_id = %s AND revision_num = %s", (source_id, revision))
+        cursor.execute("SELECT book_name, content FROM sourcetexts WHERE source_id = %s AND revision_num = %s", (source_id[0], revision))
         out = []
         for rst in cursor.fetchall():
             out.append((rst[0], rst[1]))
@@ -743,12 +746,10 @@ def translations():
             tr[name] = out_final
             non_translated = re.findall(r'>>>\w+<<<', out_final)
             if not non_translated:
-                cursor.execute("INSERT INTO translationtexts (name, content, language, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (name, out_final, targetlang, revision, source_id))
+                cursor.execute("INSERT INTO translationtexts (name, content, language, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (name, out_final, targetlang, revision, source_id[0]))
         cursor.close()
         connection.commit()
         return json.dumps(tr)
-    else:
-        return '{"success":false, "message":"Source is not available. Upload it"}'
 
 @app.route("/v1/corrections", methods=["POST"])
 @check_token
