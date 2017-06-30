@@ -762,7 +762,7 @@ def translations():
         if changes:
             return json.dumps(tr)
         else:
-            return '{"success":false, "message":' + ", ".join(changes1) + ' not available. Upload it to generate draft"}'#, 503
+            return '{"success":false, "message":"' + ", ".join(changes1) + ' not available. Upload it to generate draft"}'#, 503
 
 @app.route("/v1/corrections", methods=["POST"])
 @check_token
