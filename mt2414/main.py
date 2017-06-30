@@ -437,8 +437,12 @@ def bookwiseagt():
                 output = stoknwords - set(translatedtokenlist)
                 cursor.close()
                 return json.dumps(list(output))
-        else:
+        elif b and c:
             return '{"success":false, "message":" %s and %s is not available. Upload it."}'  %((list(b)),list(c))
+        elif not b and c:
+            return '{"success":false, "message":" %s is not available. Upload it."}'  %(list(c))
+        elif not c and b:
+            return '{"success":false, "message":" %s is not available. Upload it."}'  %((list(b)))
 
 @app.route("/v1/autotokens", methods=["GET", "POST"])
 @check_token
