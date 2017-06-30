@@ -691,6 +691,7 @@ def get_concordance():
         cursor.close()
         return json.dumps(con)
 
+
 @app.route("/v1/translations", methods=["POST"])
 @check_token
 def translations():
@@ -699,61 +700,69 @@ def translations():
     targetlang = req["targetlang"]
     version = req["version"]
     revision = req["revision"]
+    books = req["books"]
+    changes = []
+    changes1 = []
+    if len(books) == 0:
+        return '{"success":false, "message":"Select the books to be Translated."}'#, 417
     connection = get_db()
     cursor = connection.cursor()
     tokens = {}
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
-    source_id = cursor.fetchone()
-    if not source_id:
-        return '{"success":false, "message":"Source is not available. Upload it"}'
+    rst = cursor.fetchone()
+    if not rst:
+        return '{"success":false, "message":"Source is not available. Upload it"}'#, 204
     else:
-        cursor.execute("SELECT token, translated_token FROM autotokentranslations WHERE targetlang = %s AND source_id = %s AND translated_token IS NOT NULL",(targetlang, source_id[0]))
+        source_id = rst[0]
+        cursor.execute("SELECT token, translated_token FROM autotokentranslations WHERE targetlang = %s AND source_id = %s AND translated_token IS NOT NULL",(targetlang, source_id))
         for t, tr in cursor.fetchall():
             if tr:
                 tokens[t] = tr
-        cursor.execute("SELECT book_name, content FROM sourcetexts WHERE source_id = %s AND revision_num = %s", (source_id[0], revision))
-        out = []
-        for rst in cursor.fetchall():
-            out.append((rst[0], rst[1]))
         tr = {}
         tag_check = ['~', '$','\q', '\ide', '\toc', '\mt', '\h', '2', '(', '_', '“', '5', '.', "'", ':', '%', '#', ')', 'a', '^', '’', '<', '{', '”', '।', '?', '|', 'b', ';', '-', ']', '`', '0', '[', '/', '"', '6', '1', '=', '8', '+', '*', '9', 'c', '@', '3', '!', '>', ',', '4', '\\', '‘', '7', '&', '}', '\\v', '\\c', '\\p', '\\s', '\\id']
-        for name, book in out:
-            out_text_lines = []
-            hyphenated_words = re.findall(r'\w+-\w+', book)
-            book_name = (re.search('(?<=\id )\w{3}', book)).group(0)
-            content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’1234567890 ])',r' \1 ', book)
-            for line in content.split("\n"):
-                line_words = nltk.word_tokenize(line)
-                new_line_words = []
-                for word in line_words:
-                    if word not in tag_check:
-                        new_line_words.append(tokens.get(word, " >>>"+str(word)+"<<<"))
-                    else:
-                        new_line_words.append(tokens.get(word, word))
-                out_line = " ".join(new_line_words)
-                out_text_lines.append(out_line)
-            out_text = "\n".join(out_text_lines)
-            for w in hyphenated_words:
-                word = " >>>"+str(w)+"<<<"
-                replace = tokens.get(w, " >>>"+str(w)+"<<<")
-                out_text = re.sub(r'' + str(word), str(replace), out_text)
-            out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।\”\’ ])',r'\1', out_text)
-            out_final = re.sub(r'([\‘\“])\s?', r'\1', out_final)
-            out_final = re.sub(r'-\s', '-', out_final)
-            out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
-            out_final = re.sub(r'\[ ', r' \[', out_final)
-            out_final = re.sub(r'\( ', r' \(', out_final)
-            out_final = re.sub(r'(\n\\rem.*)','', out_final)
-            out_final = re.sub(r' >>>\\toc<<< ', r'\n\\toc', out_final)
-            out_final = re.sub(r'\\ide .*','\\\\ide UTF-8', out_final)
-            out_final = re.sub('(\\\\id .*)','\\id ' + str(book_name), out_final)
-            tr[name] = out_final
-            non_translated = re.findall(r'>>>\w+<<<', out_final)
-            if not non_translated:
-                cursor.execute("INSERT INTO translationtexts (name, content, language, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (name, out_final, targetlang, revision, source_id[0]))
+        for book in books:
+            cursor.execute("SELECT content FROM sourcetexts WHERE source_id = %s AND revision_num = %s and book_name = %s",(source_id, revision, book))
+            source_content = cursor.fetchone()
+            if source_content:
+                out_text_lines = []
+                book_name = (re.search('(?<=\id )\w+', source_content[0])).group(0)
+                changes.append(book_name)
+                hyphenated_words = re.findall(r'\w+-\w+', source_content[0])
+                content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’1234567890 ])',r' \1 ', source_content[0])
+                for line in content.split("\n"):
+                    line_words = nltk.word_tokenize(line)
+                    new_line_words = []
+                    for word in line_words:
+                        if word not in tag_check:
+                            new_line_words.append(tokens.get(word, " >>>"+str(word)+"<<<"))
+                        else:
+                            new_line_words.append(tokens.get(word, word))
+                    out_line = " ".join(new_line_words)
+                    out_text_lines.append(out_line)
+                out_text = "\n".join(out_text_lines)
+                for w in hyphenated_words:
+                    word = " >>>"+str(w)+"<<<"
+                    replace = tokens.get(w, " >>>"+str(w)+"<<<")
+                    out_text = re.sub(r'' + str(word), str(replace), out_text)
+                out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।\”\’ ])',r'\1', out_text)
+                out_final = re.sub(r'([\‘\“])\s?', r'\1', out_final)
+                out_final = re.sub(r'-\s', '-', out_final)
+                out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
+                out_final = re.sub(r'\[ ', r' \[', out_final)
+                out_final = re.sub(r'\( ', r' \(', out_final)
+                out_final = re.sub(r'(\n\\rem.*)','', out_final)
+                out_final = re.sub(r' >>>\\toc<<< ', r'\n\\toc', out_final)
+                out_final = re.sub(r'\\ide .*','\\\\ide UTF-8', out_final)
+                out_final = re.sub('(\\\\id .*)','\\id ' + str(book_name), out_final)
+                tr[book_name] = out_final
+            else:
+                changes1.append(book)
         cursor.close()
         connection.commit()
-        return json.dumps(tr)
+        if changes:
+            return json.dumps(tr)
+        else:
+            return '{"success":false, "message":' + ", ".join(changes1) + ' not available. Upload it to generate draft"}'#, 503
 
 @app.route("/v1/corrections", methods=["POST"])
 @check_token
