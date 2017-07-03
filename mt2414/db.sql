@@ -2,7 +2,7 @@ CREATE TABLE users (
 	id BIGSERIAL PRIMARY KEY,
 	email TEXT UNIQUE NOT NULL,
 	email_verified BOOLEAN DEFAULT FALSE,
-	verification_code TEXT UNIQUE NOT NULL,
+	verification_code TEXT UNIQUE,
 	password_hash BYTEA UNIQUE NOT NULL,
 	password_salt BYTEA UNIQUE NOT NULL,
 	created_at timestamp with time zone,
