@@ -124,15 +124,15 @@ def reset_password():
         url = "https://api.sendinblue.com/v2.0/email"
         verification_code = str(uuid.uuid4()).replace("-","")
         body = '''Hi,<br/><br/>your request for resetting the password has been recieved. <br/>
-        Enter your new password by opening this link:
+        Your temporary password is %s. Enter your new password by opening this link:
 
-        <a href="https://api.mt2414.in/v1/forgotpassword/%s">https://api.mt2414.in/v1/forgotpassword/%s</a>
+        <a href="http://autographamt.com/forgotpassword">http://autographamt.com/forgotpassword</a>
 
-        <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code, verification_code)
+        <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code)
         payload = {
             "to": {email: ""},
-            "from": ["noreply@mt2414.in","Mt. 24:14"],
-            "subject": "MT2414 - Password reset verification mail",
+            "from": ["noreply@autographamt.in","AutographaMT"],
+            "subject": "AutographaMT - Password reset verification mail",
             "html": body,
             }
         cursor.execute("UPDATE users SET verification_code= %s WHERE email = %s", (verification_code, email))
@@ -141,15 +141,16 @@ def reset_password():
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
         return '{"success":true, "message":"Link to reset password has been sent to the registered mail ID"}\n'
 
-@app.route("/v1/forgotpassword/<string:code>", methods = ["POST"])
-def reset_password2(code):
+@app.route("/v1/forgotpassword", methods = ["POST"])
+def reset_password2():
+    temp_password = request.form['temp_password']
     password = request.form['password']
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT email FROM users WHERE verification_code = %s AND email_verified = True", (code,))
+    cursor.execute("SELECT email FROM users WHERE verification_code = %s AND email_verified = True", (temp_password,))
     rst = cursor.fetchone()
     if not rst:
-        return '{"success":false, "message":"Failed to reset password"}'
+        return '{"success":false, "message":"Invalid temporary password."}'
     else:
         email = rst[0]
         password_salt = str(uuid.uuid4()).replace("-","")
@@ -157,7 +158,7 @@ def reset_password2(code):
         cursor.execute("UPDATE users SET verification_code = %s, password_hash = %s, password_salt = %s, updated_at = current_timestamp WHERE email = %s", (None, password_hash, password_salt, email))
         cursor.close()
         connection.commit()
-        return '{"success":true, "message":"Password has been reset"}'
+        return '{"success":true, "message":"Password has been reset. Login with the new password."}'
 
 class TokenError(Exception):
 
