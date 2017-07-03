@@ -382,6 +382,79 @@ def availablesbooks():
         cursor.close()
         return json.dumps(books)
 
+@app.route("/v1/language", methods=["POST"])
+@check_token
+def language():
+    connection =get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT language FROM sources")
+    language = cursor.fetchall()
+    language_list = set()
+    if not language:
+        return '{"success":false, "message":"No Languages"}'
+    else:
+        for rst in language:
+            language_list.add(rst[0])
+        cursor.close()
+        return json.dumps(list(language_list))
+
+@app.route("/v1/version", methods=["POST"])
+@check_token
+def version():
+    req = request.get_json(True)
+    language = req["language"]
+    connection =get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT version FROM sources WHERE language = %s",(language,))
+    version = cursor.fetchall()
+    version_list = set()
+    if not version:
+        return '{"success":false, "message":"No version"}'
+    else:
+        for rst in version:
+            version_list.add(rst[0])
+        cursor.close()
+        return json.dumps(list(version_list))
+
+@app.route("/v1/revision", methods=["POST"])
+@check_token
+def revision():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    connection =get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s",(language, version))
+    revision = cursor.fetchall()
+    revision_list=[]
+    if not revision:
+        return '{"success":false, "message":"No books available"}'
+    else:
+        for rst in revision:
+            revision_list.append(rst[0])
+        cursor.close()
+        return json.dumps(list(revision_list))
+
+@app.route("/v1/book", methods=["POST"])
+@check_token
+def book():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    revision = req["revision"]
+    connection =get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT st.book_name FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s AND revision_num = %s",(language, version, revision))
+    books = cursor.fetchall()
+    book_list=[]
+    if not books:
+        return '{"success":false, "message":"No books available"}'
+    else:
+        for rst in books:
+            book_list.append(rst[0])
+        cursor.close()
+        return json.dumps(list(book_list))
+
 @app.route("/v1/getbookwiseautotokens", methods=["POST"])
 @check_token
 def bookwiseagt():
@@ -489,7 +562,7 @@ def tokenlist():
         books = cursor.fetchall()
         cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
         translated_token = cursor.fetchall()
-        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token = '' AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
         not_trantoken = cursor.fetchall()
         if not translated_token:
             return '{"success":false, "message":"Translated tokens are not available. Upload token translation ."}'
