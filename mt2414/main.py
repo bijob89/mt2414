@@ -9,7 +9,7 @@ import datetime
 import scrypt
 import requests
 import jwt
-from flask import Flask, request, session
+from flask import Flask, request, session, redirect
 from flask import g
 from flask_cors import CORS, cross_origin
 import nltk
@@ -252,7 +252,8 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    return '{"success":true, "message":"Email Verified"}'
+    # return '{"success":true, "message":"Email Verified"}'
+    return redirect("http://autographamt.com/")
 
 @app.route("/v1/sources", methods=["POST"])
 @check_token
