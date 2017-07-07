@@ -66,15 +66,17 @@ def auth():
     est = cursor.fetchone()
     if not est:
         return '{"success":false, "message":"Invalid email"}'
-    cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (email,))
+    # cursor.execute("SELECT password_hash, password_salt, role_id FROM users WHERE email = %s AND email_verified = True", (email,))
+    cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s",(email,))
     rst = cursor.fetchone()
     if not rst:
         return '{"success":false, "message":"Email is not Verified"}'
     password_hash = rst[0].hex()
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
+    role = rst[2]
     if password_hash == password_hash_new:
-        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days = 1)}, jwt_hs256_secret, algorithm='HS256')
+        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days = 1), 'role': role}, jwt_hs256_secret, algorithm='HS256')
         return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
     return '{"success":false, "message":"Incorrect Password"}'
 
@@ -681,6 +683,68 @@ def upload_taggedtokens_translation():
     cursor.close()
     connection.commit()
     return '{success:true, message:"Tagged token have been updated."}'
+
+@app.route("/v1/emailslist", methods=["GET"])
+@check_token
+def emails_list():
+    connection = get_db()
+    cursor = connection.cursor()
+    user_email = request.email
+    auth = request.headers.get('Authorization', None)
+    parts = auth.split()
+    if len(parts) == 2:
+        token = parts[1]
+        options = {
+            'verify_sub': True,
+            'verify_exp': True
+        }
+        algorithm = 'HS256'
+        leeway = timedelta(seconds=10)
+        decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
+        user_role = decoded['role']
+        if user_role == 'superadmin':
+            cursor.execute("SELECT email FROM users")
+            email_list = []
+            for e in cursor.fetchall():
+                email_list.append(e[0])
+            email_list.remove(str(user_email))
+            return json.dumps(email_list)
+        else:
+            return '{success:false, message:"You are not authorized to view this page. Contact Administrator"}'
+    else:
+        raise TokenError('Invalid Token', 'Works only on autographamt.com')
+
+@app.route("/v1/superadminapproval", methods = ["POST"])
+@check_token
+def super_admin_approval():
+    req = request.get_json(True)
+    connection = get_db()
+    cursor = connection.cursor()
+    admin = req["admin"]
+    email = req["email"]
+    auth = request.headers.get('Authorization', None)
+    parts = auth.split()
+    if len(parts) == 2:
+        token = parts[1]
+        options = {
+            'verify_sub': True,
+            'verify_exp': True
+        }
+        algorithm = 'HS256'
+        leeway = timedelta(seconds=10)
+        decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
+        user_role = decoded['role']
+        if user_role == 'superadmin' and admin == "True":
+            cursor.execute("UPDATE users SET role_id = 2 WHERE email = %s",(email,))
+            return '{success:true, message:" ' + str(email) + ' has been provided with Administrator privilege."}'
+        elif user_role == 'superadmin' and admin == "False":
+            cursor.execute("UPDATE users SET role_id = 3 WHERE email = %s",(email,))
+            return '{success:true, message:"Administrator privileges has been removed of user: ' + str(email) + '."}'
+        elif user_role != 'superadmin':
+            return '{success:false, message:"You are not authorized to edit this page. Contact Administrator"}'
+        cursor.close()
+        connection.commit()
+    return '{}\n'
 
 @app.route("/v1/generateconcordance", methods=["POST"])
 @check_token
