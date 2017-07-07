@@ -77,7 +77,7 @@ def auth():
     role = rst[2]
     if password_hash == password_hash_new:
         access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days = 1), 'role': role}, jwt_hs256_secret, algorithm='HS256')
-        return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
+        return '{"access_token": "%s", "role":"%s"}\n' % (access_token.decode('utf-8'), role)
     return '{"success":false, "message":"Incorrect Password"}'
 
 @app.route("/v1/registrations", methods=["POST"])
