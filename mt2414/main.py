@@ -736,14 +736,16 @@ def super_admin_approval():
         user_role = decoded['role']
         if user_role == 'superadmin' and admin == "True":
             cursor.execute("UPDATE users SET role_id = 2 WHERE email = %s",(email,))
-            return '{success:true, message:" ' + str(email) + ' has been provided with Administrator privilege."}'
+            cursor.close()
+            connection.commit()
+            return '{"success":true, "message":" ' + str(email) + ' has been provided with Administrator privilege."}'
         elif user_role == 'superadmin' and admin == "False":
             cursor.execute("UPDATE users SET role_id = 3 WHERE email = %s",(email,))
-            return '{success:true, message:"Administrator privileges has been removed of user: ' + str(email) + '."}'
+            cursor.close()
+            connection.commit()
+            return '{"success":true, "message":"Administrator privileges has been removed of user: ' + str(email) + '."}'
         elif user_role != 'superadmin':
-            return '{success:false, message:"You are not authorized to edit this page. Contact Administrator"}'
-        cursor.close()
-        connection.commit()
+            return '{"success":false, "message":"You are not authorized to edit this page. Contact Administrator"}'
     return '{}\n'
 
 @app.route("/v1/generateconcordance", methods=["POST"])
