@@ -257,12 +257,61 @@ def new_registration2(code):
     # return '{"success":true, "message":"Email Verified"}'
     return redirect("http://autographamt.com/")
 
+@app.route("/v1/createsources", methods=["POST"])
+@check_token
+def create_sources():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    connection = get_db()
+    cursor = connection.cursor()
+    auth = request.headers.get('Authorization', None)
+    parts = auth.split()
+    if len(parts) == 2:
+        token = parts[1]
+        options = {
+            'verify_sub': True,
+            'verify_exp': True
+        }
+        algorithm = 'HS256'
+        leeway = timedelta(seconds=10)
+        decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
+        user_role = decoded['role']
+        if user_role == 'admin' or user_role == 'superadmin':
+            cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (language, version))
+            rst = cursor.fetchone()
+            if not rst:
+                cursor.execute("INSERT INTO sources (language, version) VALUES (%s, %s)", (language, version))
+            else:
+                return '{"success":false, "message":"Source already exists."}'
+            cursor.close()
+            connection.commit()
+            return '{"success":true, "message":"New source has been created"}'
+        else:
+            return '{"success":false, "message":"You don\'t have permission to access this page"}'
+
+@app.route("/v1/sourceslist", methods=["GET"])
+@check_token
+def sources_list():
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id, language, version, id FROM sources")
+    rst = cursor.fetchall()
+    cursor.close()
+    tr = {}
+    if not rst:
+        return '{"success":false, "message":"No Sources available. Create new sources."}'
+    else:
+        for item in rst:
+            tr[item[0]] = [item[1], item[2]]
+        return json.dumps(tr)
+
 @app.route("/v1/sources", methods=["POST"])
 @check_token
 def sources():
     req = request.get_json(True)
     language = req["language"]
-    content = req["content"]
+    content = req["content"] # content is an array of book contents.
     version = req["version"]
     connection = get_db()
     cursor = connection.cursor()
@@ -275,18 +324,36 @@ def sources():
         cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
         source_id = cursor.fetchone()[0]
         for files in content:
-            cursor = connection.cursor()
+            # The next line (base64 decoding) is a work around as the ui team is not able to process the usfm file (\v is being treated as the vertical tab)
+            ## once they fix this issue, the file received will be a plain usfm file.
+
             base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
             book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
             text_file = re.sub(r'(\n\\rem.*)','', base_convert)
-            text_file = re.sub(r'(\\rem.*)','', base_convert)
+            text_file = re.sub(r'(\\rem.*)','', base_convert) #Check: base_convert should be text_file
             text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
+
+            # Saving the uploaded texts into the datbase
             revision_num = 1
             cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
+
+            # Now generating the tokens.
+            ## Step 1: Add a space before and after the punctuations. Sometimes the source text are not very consistent in the way punctuations are used
+            ### If we didn't add a space, when removing the punctuations, the words will get joined and hence it create a textual issue.
             remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])',r' \1 ', text_file)
+
+            ## Removing punctuations
             remove_punct1 = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', remove_punct)
+
+            ## Tokenizing using the nltk
             token_list = nltk.word_tokenize(remove_punct1)
-            ignore = [ book_name, "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
+
+            ### The next line can be removed as it is no longer processed. Bijo was attempting to exclude the markers and book ids being added as tokens
+            ### We are ignoring this issue as, the extra tokens created by this is negligible, but if we check for them, it will add a lot more complexity to the processing.
+#            ignore = [ book_name, "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
+
+            ## Extract the unique tokens from the token_list and save the tokens in to the db, separately for each book.
+            ### The table name cluster implies, bookwise storage of tokens.
             token_set = set([x.encode('utf-8') for x in token_list])
             for t in token_set:
                 cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
@@ -310,7 +377,6 @@ def sources():
                 count = 0
                 count1 = 0
                 for i in range(0, len(all_books)):
-                    cursor = connection.cursor()
                     if all_books[i][1] != text_file and book_name == all_books[i][0]:
                         count = count + 1
                     elif all_books[i][1] == text_file and book_name == all_books[i][0]:
@@ -327,10 +393,7 @@ def sources():
                     cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s", (source_id, str(revision_num)))
                     for t in token_set:
                         cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
-                    cursor.close()
-                    connection.commit()
             elif book_name not in books:
-                cursor = connection.cursor()
                 revision_num = 1
                 cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
                 changes.append(book_name)
@@ -342,8 +405,8 @@ def sources():
                 cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s", (source_id, str(revision_num)))
                 for t in token_set:
                     cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
-                cursor.close()
-                connection.commit()
+        cursor.close()
+        connection.commit()
         if changes:
             return '{"success":true, "message":"Existing source updated"}'
         else:
@@ -648,10 +711,12 @@ def upload_tokens_translation():
     cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
     transtokens = cursor.fetchall()
     if transtokens:
+        token_list = []
+        for i in transtokens:
+            token_list.append(i[0])
         for k, v in tokenwords.items():
             if v:
-                cursor.execute("SELECT token from autotokentranslations WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (k, source_id[0], revision, targetlang))
-                if cursor.fetchone():
+                if k in token_list:
                     cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
                 else:
                     cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
@@ -659,7 +724,6 @@ def upload_tokens_translation():
         connection.commit()
         return '{"success":true, "message":"Token translations have been updated."}'
     else:
-        cursor = connection.cursor()
         for k, v in tokenwords.items():
             if v:
                 cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
