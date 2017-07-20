@@ -1,13 +1,19 @@
+CREATE TABLE roles (
+	id BIGSERIAL PRIMARY KEY,
+	name TEXT UNIQUE NOT NULL
+);
+
 CREATE TABLE users (
 	id BIGSERIAL PRIMARY KEY,
 	email TEXT UNIQUE NOT NULL,
 	email_verified BOOLEAN DEFAULT FALSE,
-	verification_code TEXT UNIQUE NOT NULL,
+	verification_code TEXT UNIQUE,
 	password_hash BYTEA UNIQUE NOT NULL,
 	password_salt BYTEA UNIQUE NOT NULL,
 	created_at timestamp with time zone,
 	updated_at timestamp with time zone,
-	deleted_at timestamp with time zone
+	deleted_at timestamp with time zone,
+	role_id BIGINT REFERENCES roles(id) DEFAULT 3
 );
 
 CREATE TABLE keys (
@@ -51,7 +57,6 @@ CREATE TABLE cluster (
 	deleted_at timestamp with time zone,
 	source_id BIGINT REFERENCES sources(id) NOT NULL
 );
-
 
 CREATE TABLE concordance (
 	id BIGSERIAL PRIMARY KEY,
