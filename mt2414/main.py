@@ -16,7 +16,9 @@ import nltk
 import polib
 import re
 import base64
+import logging
 
+logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
 PO_METADATA = {
     'Project-Id-Version': '1.0',
@@ -65,6 +67,7 @@ def auth():
     cursor.execute("SELECT email FROM users WHERE  email = %s",(email,))
     est = cursor.fetchone()
     if not est:
+        logging.warning('Unregistered user \'%s\' login attempt unsuccessful' % email)
         return '{"success":false, "message":"Invalid email"}'
     # cursor.execute("SELECT password_hash, password_salt, role_id FROM users WHERE email = %s AND email_verified = True", (email,))
     cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s",(email,))
@@ -77,7 +80,9 @@ def auth():
     role = rst[2]
     if password_hash == password_hash_new:
         access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days = 1), 'role': role}, jwt_hs256_secret, algorithm='HS256')
+        logging.warning('User \'' + str(email) + '\' logged in successfully')
         return '{"access_token": "%s", "role":"%s"}\n' % (access_token.decode('utf-8'), role)
+    logging.warning('User \'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
     return '{"success":false, "message":"Incorrect Password"}'
 
 @app.route("/v1/registrations", methods=["POST"])
@@ -306,111 +311,99 @@ def sources_list():
             tr[item[0]] = [item[1], item[2]]
         return json.dumps(tr)
 
+def tokenise(content):
+    remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', content)
+    token_list = nltk.word_tokenize(remove_punct)
+    token_set = set([x.encode('utf-8') for x in token_list])
+    return token_set
+
+@app.route("/v1/sourceid", methods = ["POST"])
+@check_token
+def sourceid():
+    req = request.get_json(True)
+    language = req["language"]
+    version = req["version"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (language, version))
+    rst = cursor.fetchone()
+    cursor.close()
+    if rst:
+        source_id = rst[0]
+        return str(source_id)
+
 @app.route("/v1/sources", methods=["POST"])
 @check_token
 def sources():
     req = request.get_json(True)
     language = req["language"]
-    content = req["content"] # content is an array of book contents.
+    content = req["content"]
     version = req["version"]
-    connection = get_db()
-    cursor = connection.cursor()
-    cursor.execute("SELECT id from sources WHERE language = %s and version = %s",(language, version))
-    rst = cursor.fetchone()
-    cursor.close()
-    changes = []
-    if not rst:
-        cursor = connection.cursor()
-        cursor.execute("INSERT INTO sources (language, version) VALUES (%s , %s) RETURNING id", (language, version))
-        source_id = cursor.fetchone()[0]
-        for files in content:
-            # The next line (base64 decoding) is a work around as the ui team is not able to process the usfm file (\v is being treated as the vertical tab)
-            ## once they fix this issue, the file received will be a plain usfm file.
-
-            base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
-            book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
-            text_file = re.sub(r'(\n\\rem.*)','', base_convert)
-            text_file = re.sub(r'(\\rem.*)','', base_convert) #Check: base_convert should be text_file
-            text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
-
-            # Saving the uploaded texts into the datbase
-            revision_num = 1
-            cursor.execute("INSERT INTO sourcetexts (book_name, content, revision_num, source_id) VALUES (%s, %s, %s, %s)", (book_name, text_file, revision_num, source_id))
-
-            # Now generating the tokens.
-            ## Step 1: Add a space before and after the punctuations. Sometimes the source text are not very consistent in the way punctuations are used
-            ### If we didn't add a space, when removing the punctuations, the words will get joined and hence it create a textual issue.
-            remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])',r' \1 ', text_file)
-
-            ## Removing punctuations
-            remove_punct1 = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', remove_punct)
-
-            ## Tokenizing using the nltk
-            token_list = nltk.word_tokenize(remove_punct1)
-
-            ### The next line can be removed as it is no longer processed. Bijo was attempting to exclude the markers and book ids being added as tokens
-            ### We are ignoring this issue as, the extra tokens created by this is negligible, but if we check for them, it will add a lot more complexity to the processing.
-#            ignore = [ book_name, "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
-
-            ## Extract the unique tokens from the token_list and save the tokens in to the db, separately for each book.
-            ### The table name cluster implies, bookwise storage of tokens.
-            token_set = set([x.encode('utf-8') for x in token_list])
-            for t in token_set:
-                cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
-            cursor.close()
-            connection.commit()
-        return '{"success":true, "message":"New source added to database"}'
-    else:
-        cursor = connection.cursor()
-        source_id = rst[0]
-        books = []
-        cursor.execute("SELECT book_name, content, revision_num from sourcetexts WHERE source_id = %s", (source_id,))
-        all_books = cursor.fetchall()
-        for i in range(0, len(all_books)):
-            books.append(all_books[i][0])
-        for files in content:
-            base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
-            book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
-            text_file = re.sub(r'(\n\\rem.*)','', base_convert)
-            text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
-            if book_name in books:
-                count = 0
-                count1 = 0
-                for i in range(0, len(all_books)):
-                    if all_books[i][1] != text_file and book_name == all_books[i][0]:
-                        count = count + 1
-                    elif all_books[i][1] == text_file and book_name == all_books[i][0]:
-                        count1 = all_books[i][2]
-                if count1 == 0 and count != 0:
-                    revision_num = count + 1
+    # source_id = req["source_id"]
+    auth = request.headers.get('Authorization', None)
+    parts = auth.split()
+    email_id = request.email
+    if len(parts) == 2:
+        token = parts[1]
+        options = {
+            'verify_sub': True,
+            'verify_exp': True
+        }
+        algorithm = 'HS256'
+        leeway = timedelta(seconds=10)
+        decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
+        user_role = decoded['role']
+        if user_role == 'admin' or user_role == 'superadmin':
+            connection = get_db()
+            cursor = connection.cursor()
+            cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (language, version))
+            source_id = cursor.fetchone()[0]
+            changes = []
+            books = []
+            cursor.execute("SELECT book_name, content, revision_num from sourcetexts WHERE source_id = %s", (source_id,))
+            all_books = cursor.fetchall()
+            for i in range(0, len(all_books)):
+                books.append(all_books[i][0])
+            for files in content:
+                base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
+                book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
+                text_file = re.sub(r'(\n\\rem.*)','', base_convert)
+                text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
+                if book_name in books:
+                    count = 0
+                    count1 = 0
+                    for i in range(0, len(all_books)):
+                        if all_books[i][1] != text_file and book_name == all_books[i][0]:
+                            count = count + 1
+                        elif all_books[i][1] == text_file and book_name == all_books[i][0]:
+                            count1 = all_books[i][2]
+                    if count1 == 0 and count != 0:
+                        revision_num = count + 1
+                        cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
+                        changes.append(book_name)
+                        logging.warning('User \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded revised version of \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
+                        token_set = tokenise(text_file)
+                        for t in token_set:
+                            cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
+                elif book_name not in books:
+                    revision_num = 1
                     cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
+                    logging.warning('User \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded new book \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
                     changes.append(book_name)
-                    remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', text_file)
-                    remove_punct1 = re.sub(str(book_name), "", remove_punct )
-                    token_list = nltk.word_tokenize(remove_punct1)
-                    ignore = [ "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
-                    token_set = set([x.encode('utf-8') for x in token_list if x not in ignore])
-                    cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s", (source_id, str(revision_num)))
+                    token_set = tokenise(text_file)
                     for t in token_set:
                         cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
-            elif book_name not in books:
-                revision_num = 1
-                cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
-                changes.append(book_name)
-                remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', text_file)
-                remove_punct1 = re.sub(str(book_name), "", remove_punct )
-                token_list = nltk.word_tokenize(remove_punct1)
-                ignore = [ "SA", " QA", " CH", " CO", " id", " d", " PE", " TH", " KI", " TI", " i", " JN", " l", " m", " JN", " q", " qa"]
-                token_set = set([x.encode('utf-8') for x in token_list if x not in ignore])
-                cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s", (source_id, str(revision_num)))
-                for t in token_set:
-                    cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
-        cursor.close()
-        connection.commit()
-        if changes:
-            return '{"success":true, "message":"Existing source updated"}'
         else:
-            return '{"success":false, "message":"No Changes. Existing source is already up-to-date."}'
+            return '{"success":false, "message":"You are not authorized to view this page. Contact Administrator"}'
+    else:
+        raise TokenError('Invalid header', 'Access token required')
+    cursor.close()
+    connection.commit()
+    if changes:
+        return '{"success":true, "message":"Source has been uploaded successfully."}'
+    else:
+        logging.warning('User:' + str(email_id) + ', Source content upload failed as files already exists.')
+        return '{"success":false, "message":"No Changes. Existing source is already up-to-date."}'
 
 @app.route("/v1/get_languages", methods=["POST"])
 @check_token
@@ -535,6 +528,7 @@ def bookwiseagt():
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
     source_id = cursor.fetchone()
+    email_id = request.email
     if not source_id:
         return '{"success":false, "message":"Source is not available. Upload source."}'
     else:
@@ -561,6 +555,7 @@ def bookwiseagt():
                         toknwords.append(t[0])
                 stoknwords = set(toknwords)
                 cursor.close()
+                logging.warning( 'User \'' +str(email_id) + '\' downloaded tokens from \'' + str(", ".join(books)) + '\' book/books')
                 return json.dumps(list(stoknwords))
             elif books and notbooks:
                 for bkn in books:
@@ -576,12 +571,16 @@ def bookwiseagt():
                 stoknwords = set(toknwords) -  set(ntoknwords)
                 output = stoknwords - set(translatedtokenlist)
                 cursor.close()
+                logging.warning( 'User \'' +str(email_id) + '\' downloaded tokens from \'' + str(", ".join(books)) + '\' excluding from \'' + str(", ".join(notbooks)) + '\' book/books')
                 return json.dumps(list(output))
         elif b and c:
+            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b) + list(c))) +'\' not available')
             return '{"success":false, "message":" %s and %s is not available. Upload it."}'  %((list(b)),list(c))
         elif not b and c:
+            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(c))) +'\' not available')
             return '{"success":false, "message":" %s is not available. Upload it."}'  %(list(c))
         elif not c and b:
+            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b))) +'\' not available')
             return '{"success":false, "message":" %s is not available. Upload it."}'  %((list(b)))
 
 @app.route("/v1/autotokens", methods=["GET", "POST"])
@@ -702,6 +701,7 @@ def upload_tokens_translation():
     revision = req["revision"]
     tokenwords = req["tokenwords"]
     targetlang = req["targetlang"]
+    changes = []
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s ", (language, version))
@@ -720,16 +720,22 @@ def upload_tokens_translation():
                     cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
                 else:
                     cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                changes.append(v)
         cursor.close()
         connection.commit()
-        return '{"success":true, "message":"Token translations have been updated."}'
     else:
         for k, v in tokenwords.items():
             if v:
                 cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                changes.append(v)
         cursor.close()
         connection.commit()
+    if changes:
+        logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
         return '{"success":true, "message":"Token translation have been uploaded successfully"}'
+    else:
+        logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
+        return '{"success":false, "message":"Incorrect file format used to upload token translation"}'
 
 @app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])
 @check_token
@@ -916,6 +922,7 @@ def translations():
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
     rst = cursor.fetchone()
     if not rst:
+        logging.warning('Translation draft generation unsuccessful as no books were selected by user \'' + str(request.email) + '\'')
         return '{"success":false, "message":"Source is not available. Upload it"}'#, 204
     else:
         source_id = rst[0]
@@ -965,8 +972,10 @@ def translations():
         cursor.close()
         connection.commit()
         if changes:
+            logging.warning('Translation draft successfully generated by user \'' + str(request.email) + '\'')
             return json.dumps(tr)
         else:
+            logging.warning('Translation draft generation by user \'' + str(request.email) + '\' unsuccessful')
             return '{"success":false, "message":"' + ", ".join(changes1) + ' not available. Upload it to generate draft"}'#, 503
 
 @app.route("/v1/corrections", methods=["POST"])
