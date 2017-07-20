@@ -69,7 +69,6 @@ def auth():
     if not est:
         logging.warning('Unregistered user \'%s\' login attempt unsuccessful' % email)
         return '{"success":false, "message":"Invalid email"}'
-    # cursor.execute("SELECT password_hash, password_salt, role_id FROM users WHERE email = %s AND email_verified = True", (email,))
     cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s",(email,))
     rst = cursor.fetchone()
     if not rst:
@@ -259,7 +258,6 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    # return '{"success":true, "message":"Email Verified"}'
     return redirect("http://autographamt.com/")
 
 @app.route("/v1/createsources", methods=["POST"])
@@ -336,10 +334,8 @@ def sourceid():
 @check_token
 def sources():
     req = request.get_json(True)
-    language = req["language"]
     content = req["content"]
-    version = req["version"]
-    # source_id = req["source_id"]
+    source_id = req["source_id"]
     auth = request.headers.get('Authorization', None)
     parts = auth.split()
     email_id = request.email
@@ -356,8 +352,6 @@ def sources():
         if user_role == 'admin' or user_role == 'superadmin':
             connection = get_db()
             cursor = connection.cursor()
-            cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (language, version))
-            source_id = cursor.fetchone()[0]
             changes = []
             books = []
             cursor.execute("SELECT book_name, content, revision_num from sourcetexts WHERE source_id = %s", (source_id,))
