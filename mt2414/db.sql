@@ -3,6 +3,10 @@ CREATE TABLE roles (
 	name TEXT UNIQUE NOT NULL
 );
 
+INSERT INTO roles (name) VALUES ('superadmin');
+INSERT INTO roles (name) VALUES ('admin');
+INSERT INTO roles (name) VALUES ('member');
+
 CREATE TABLE users (
 	id BIGSERIAL PRIMARY KEY,
 	email TEXT UNIQUE NOT NULL,
