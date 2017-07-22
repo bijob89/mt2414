@@ -959,7 +959,7 @@ def translations():
                 out_final = re.sub(r'(\n\\rem.*)','', out_final)
                 out_final = re.sub(r' >>>\\toc<<< ', r'\n\\toc', out_final)
                 out_final = re.sub(r'\\ide .*','\\\\ide UTF-8', out_final)
-                out_final = re.sub('(\\\\id .*)','\\id ' + str(book_name), out_final)
+                out_final = re.sub('(\\\\id .*)','\\id ' + str(book_name) + "\n", out_final)
                 tr[book_name] = out_final
             else:
                 changes1.append(book)
