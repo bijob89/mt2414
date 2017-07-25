@@ -16,6 +16,13 @@ import nltk
 import polib
 import re
 import base64
+import xlrd
+from xlrd import open_workbook
+import json, ast
+from django.http import HttpResponse
+import flask_excel as excel
+import flask
+import pyexcel
 import logging
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -93,7 +100,9 @@ def new_registration():
     verification_code = str(uuid.uuid4()).replace("-","")
     body = '''Hi,<br/><br/>Thanks for your interest to use the MT2414 web service. <br/>
     You need to confirm your email by opening this link:
+
     <a href="https://api.mt2414.in/v1/verifications/%s">https://api.mt2414.in/v1/verifications/%s</a>
+
     <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code, verification_code)
     payload = {
         "to": {email: ""},
@@ -129,7 +138,9 @@ def reset_password():
         verification_code = str(uuid.uuid4()).replace("-","")
         body = '''Hi,<br/><br/>your request for resetting the password has been recieved. <br/>
         Your temporary password is %s. Enter your new password by opening this link:
+
         <a href="http://autographamt.com/forgotpassword">http://autographamt.com/forgotpassword</a>
+
         <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code)
         payload = {
             "to": {email: ""},
@@ -504,24 +515,28 @@ def book():
         cursor.close()
         return json.dumps(list(book_list))
 
-@app.route("/v1/getbookwiseautotokens", methods=["POST"])
+@app.route("/v1/getbookwiseautotokens", methods=["POST","GET"])
 @check_token
 def bookwiseagt():
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
     version = req["version"]
     revision = req["revision"]
-    books = req["books"]
-    notbooks = req["nbooks"]
+    include_books = req["books"]
+    exclude_books = req["nbooks"]
     targetlang = req["targetlang"]
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
     source_id = cursor.fetchone()
-    email_id = request.email
     if not source_id:
         return '{"success":false, "message":"Source is not available. Upload source."}'
     else:
+        if not include_books and not exclude_books:
+            return '{"success":false, "message":"Select any books from include books"}'
+        elif not include_books and exclude_books:
+            return '{"success":false, "message":"Select any books from include books"}'
+
         toknwords = []
         ntoknwords = []
         availablelan = []
@@ -529,31 +544,37 @@ def bookwiseagt():
         avlbk = cursor.fetchall()
         for i in avlbk:
             availablelan.append(i[0])
-        b = set(books) - set(availablelan)
-        c =set(notbooks) - set(availablelan)
+        b = set(include_books) - set(availablelan)
+        c =set(exclude_books) - set(availablelan)
         translatedtokenlist = []
         cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0] ))
         translatedtoken = cursor.fetchall()
         for tk in translatedtoken:
             translatedtokenlist.append(tk[0])
         if  not b and not c:
-            if books and not notbooks:
-                for bkn in books:
+            if include_books and not exclude_books:
+                for bkn in include_books:
                     cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id[0], revision, bkn,))
                     tokens = cursor.fetchall()
                     for t in tokens:
                         toknwords.append(t[0])
                 stoknwords = set(toknwords)
                 cursor.close()
-                logging.warning( 'User \'' +str(email_id) + '\' downloaded tokens from \'' + str(", ".join(books)) + '\' book/books')
-                return json.dumps(list(stoknwords))
-            elif books and notbooks:
-                for bkn in books:
+                result = [['TOKEN', 'TRANSLATION']]
+                for i in list(stoknwords):
+                    result.append([i])
+                sheet = pyexcel.Sheet(result)
+                output = flask.make_response(sheet.xlsx)
+                output.headers["Content-Disposition"] = "attachment; filename=export.xlsx"
+                output.headers["Content-type"] = "xlsx"
+                return output
+            elif include_books and exclude_books:
+                for bkn in include_books:
                     cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id[0], revision, bkn,))
                     tokens = cursor.fetchall()
                     for t in tokens:
                         toknwords.append(t[0])
-                for nbkn in notbooks:
+                for nbkn in exclude_books:
                     cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id[0], revision, nbkn,))
                     ntokens = cursor.fetchall()
                     for t in ntokens:
@@ -561,16 +582,19 @@ def bookwiseagt():
                 stoknwords = set(toknwords) -  set(ntoknwords)
                 output = stoknwords - set(translatedtokenlist)
                 cursor.close()
-                logging.warning( 'User \'' +str(email_id) + '\' downloaded tokens from \'' + str(", ".join(books)) + '\' excluding from \'' + str(", ".join(notbooks)) + '\' book/books')
-                return json.dumps(list(output))
+                result = [['TOKEN', 'TRANSLATION']]
+                for i in list(stoknwords):
+                    result.append([i])
+                sheet = pyexcel.Sheet(result)
+                output = flask.make_response(sheet.xlsx)
+                output.headers["Content-Disposition"] = "attachment; filename=export.xlsx"
+                output.headers["Content-type"] = "xlsx"
+                return output
         elif b and c:
-            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b) + list(c))) +'\' not available')
             return '{"success":false, "message":" %s and %s is not available. Upload it."}'  %((list(b)),list(c))
         elif not b and c:
-            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(c))) +'\' not available')
             return '{"success":false, "message":" %s is not available. Upload it."}'  %(list(c))
         elif not c and b:
-            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b))) +'\' not available')
             return '{"success":false, "message":" %s is not available. Upload it."}'  %((list(b)))
 
 @app.route("/v1/autotokens", methods=["GET", "POST"])
@@ -685,12 +709,11 @@ def tokencount():
 @app.route("/v1/uploadtokentranslation", methods=["POST"])
 @check_token
 def upload_tokens_translation():
-    req = request.get_json(True)
-    language = req["language"]
-    version = req["version"]
-    revision = req["revision"]
-    tokenwords = req["tokenwords"]
-    targetlang = req["targetlang"]
+    language = request.form["language"]
+    version = request.form["version"]
+    revision = request.form["revision"]
+    tokenwords = request.files['tokenwords']
+    targetlang = request.form["targetlang"]
     changes = []
     connection = get_db()
     cursor = connection.cursor()
@@ -698,34 +721,57 @@ def upload_tokens_translation():
     source_id = cursor.fetchone()
     if not source_id:
         return '{"success":false, "message":"Unable to locate the language, version and revision number specified"}'
-    cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
-    transtokens = cursor.fetchall()
-    if transtokens:
-        token_list = []
-        for i in transtokens:
-            token_list.append(i[0])
-        for k, v in tokenwords.items():
-            if v:
-                if k in token_list:
-                    cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
-                else:
+    exl = tokenwords.read()
+    with open("tokn.xlsx", "wb") as o:
+        o.write(exl)
+    tokenwords = open_workbook('tokn.xlsx')
+    book = tokenwords
+    p=book.sheet_by_index(0)
+    count = 0
+    for c in range(p.nrows):                                   # to find an empty cell
+        cell = p.cell(c,1).value
+        if cell:
+            count = count + 1
+    if count > 1:
+        token_c = (token_c.value for token_c in p.col(0,1))
+        tran = (tran.value for tran in p.col(1,1))
+        data = dict(zip(token_c, tran))
+        dic = ast.literal_eval(json.dumps(data))
+        cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
+        transtokens = cursor.fetchall()
+        if transtokens:
+            token_list = []
+            for i in transtokens:
+                token_list.append(i[0])
+            for k, v in dic.items():
+                if v:
+                    if k not in token_list:
+                        cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                        changes.append(v)
+                    # cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
+            cursor.close()
+            connection.commit()
+            filename = "tokn.xlsx"
+            if os.path.exists(filename):
+                os.remove(filename)
+        else:
+            for k, v in dic.items():
+                if v:
                     cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
-                changes.append(v)
-        cursor.close()
-        connection.commit()
+                    changes.append(v)
+            cursor.close()
+            connection.commit()
+            filename = "tokn.xlsx"
+            if os.path.exists(filename):
+                os.remove(filename)
+        if changes:
+            logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
+            return '{"success":true, "message":"Token translation have been uploaded successfully"}'
+        else:
+            logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
+            return '{"success":false, "message":"Tokens cannot be updated"}'
     else:
-        for k, v in tokenwords.items():
-            if v:
-                cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
-                changes.append(v)
-        cursor.close()
-        connection.commit()
-    if changes:
-        logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
-        return '{"success":true, "message":"Token translation have been uploaded successfully"}'
-    else:
-        logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
-        return '{"success":false, "message":"Incorrect file format used to upload token translation"}'
+        return '{"success":false, "message":"Tokens have no translation"}'
 
 @app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])
 @check_token
@@ -891,7 +937,6 @@ def get_concordance():
             con[str(book)] = str(concordances)
         cursor.close()
         return json.dumps(con)
-
 
 @app.route("/v1/translations", methods=["POST"])
 @check_token
