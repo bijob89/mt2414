@@ -591,10 +591,13 @@ def bookwiseagt():
                 output.headers["Content-type"] = "xlsx"
                 return output
         elif b and c:
+            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b) + list(c))) +'\' not available')
             return '{"success":false, "message":" %s and %s is not available. Upload it."}'  %((list(b)),list(c))
         elif not b and c:
+            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(c))) +'\' not available')
             return '{"success":false, "message":" %s is not available. Upload it."}'  %(list(c))
         elif not c and b:
+            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b))) +'\' not available')
             return '{"success":false, "message":" %s is not available. Upload it."}'  %((list(b)))
 
 @app.route("/v1/autotokens", methods=["GET", "POST"])
