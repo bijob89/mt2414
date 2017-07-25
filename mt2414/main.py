@@ -698,11 +698,10 @@ def upload_tokens_translation():
                 token_list.append(i[0])
             for k, v in dic.items():
                 if v:
-                    if k in token_list:
-                        cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
-                    else:
+                    if k not in token_list:
                         cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
-                    changes.append(v)
+                        changes.append(v)
+                    # cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
             cursor.close()
             connection.commit()
             filename = "tokn.xlsx"
@@ -723,10 +722,9 @@ def upload_tokens_translation():
             return '{"success":true, "message":"Token translation have been uploaded successfully"}'
         else:
             logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
-            return '{"success":false, "message":"Incorrect file format used to upload token translation"}'
+            return '{"success":false, "message":"Tokens cannot be updated"}'
     else:
         return '{"success":false, "message":"Tokens have no translation"}'
-
 
 @app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])
 @check_token
