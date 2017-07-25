@@ -9,13 +9,23 @@ import datetime
 import scrypt
 import requests
 import jwt
-from flask import Flask, request, session
+from flask import Flask, request, session, redirect
 from flask import g
 from flask_cors import CORS, cross_origin
 import nltk
 import polib
 import re
 import base64
+import xlrd
+from xlrd import open_workbook
+import json, ast
+from django.http import HttpResponse
+import flask_excel as excel
+import flask
+import pyexcel
+import logging
+
+logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
 
 PO_METADATA = {
@@ -66,16 +76,18 @@ def auth():
     est = cursor.fetchone()
     if not est:
         return '{"success":false, "message":"Invalid email"}'
-    cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s AND email_verified = True", (email,))
+    # cursor.execute("SELECT password_hash, password_salt, role_id FROM users WHERE email = %s AND email_verified = True", (email,))
+    cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s",(email,))
     rst = cursor.fetchone()
     if not rst:
         return '{"success":false, "message":"Email is not Verified"}'
     password_hash = rst[0].hex()
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
+    role = rst[2]
     if password_hash == password_hash_new:
-        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days = 1)}, jwt_hs256_secret, algorithm='HS256')
-        return '{"access_token": "%s"}\n' % access_token.decode('utf-8')
+        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days = 1), 'role': role}, jwt_hs256_secret, algorithm='HS256')
+        return '{"access_token": "%s", "role":"%s"}\n' % (access_token.decode('utf-8'), role)
     return '{"success":false, "message":"Incorrect Password"}'
 
 @app.route("/v1/registrations", methods=["POST"])
@@ -252,7 +264,8 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    return '{"success":true, "message":"Email Verified"}'
+    # return '{"success":true, "message":"Email Verified"}'
+    return redirect("http://autographamt.com/")
 
 @app.route("/v1/sources", methods=["POST"])
 @check_token
@@ -455,15 +468,15 @@ def book():
         cursor.close()
         return json.dumps(list(book_list))
 
-@app.route("/v1/getbookwiseautotokens", methods=["POST"])
+@app.route("/v1/getbookwiseautotokens", methods=["POST","GET"])
 @check_token
 def bookwiseagt():
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
     version = req["version"]
     revision = req["revision"]
-    books = req["books"]
-    notbooks = req["nbooks"]
+    include_books = req["books"]
+    exclude_books = req["nbooks"]
     targetlang = req["targetlang"]
     connection = get_db()
     cursor = connection.cursor()
@@ -472,6 +485,11 @@ def bookwiseagt():
     if not source_id:
         return '{"success":false, "message":"Source is not available. Upload source."}'
     else:
+        if not include_books and not exclude_books:
+            return '{"success":false, "message":"Select any books from include books"}'
+        elif not include_books and exclude_books:
+            return '{"success":false, "message":"Select any books from include books"}'
+
         toknwords = []
         ntoknwords = []
         availablelan = []
@@ -479,30 +497,37 @@ def bookwiseagt():
         avlbk = cursor.fetchall()
         for i in avlbk:
             availablelan.append(i[0])
-        b = set(books) - set(availablelan)
-        c =set(notbooks) - set(availablelan)
+        b = set(include_books) - set(availablelan)
+        c =set(exclude_books) - set(availablelan)
         translatedtokenlist = []
         cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0] ))
         translatedtoken = cursor.fetchall()
         for tk in translatedtoken:
             translatedtokenlist.append(tk[0])
         if  not b and not c:
-            if books and not notbooks:
-                for bkn in books:
+            if include_books and not exclude_books:
+                for bkn in include_books:
                     cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id[0], revision, bkn,))
                     tokens = cursor.fetchall()
                     for t in tokens:
                         toknwords.append(t[0])
                 stoknwords = set(toknwords)
                 cursor.close()
-                return json.dumps(list(stoknwords))
-            elif books and notbooks:
-                for bkn in books:
+                result = [['TOKEN', 'TRANSLATION']]
+                for i in list(stoknwords):
+                    result.append([i])
+                sheet = pyexcel.Sheet(result)
+                output = flask.make_response(sheet.xlsx)
+                output.headers["Content-Disposition"] = "attachment; filename=export.xlsx"
+                output.headers["Content-type"] = "xlsx"
+                return output
+            elif include_books and exclude_books:
+                for bkn in include_books:
                     cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id[0], revision, bkn,))
                     tokens = cursor.fetchall()
                     for t in tokens:
                         toknwords.append(t[0])
-                for nbkn in notbooks:
+                for nbkn in exclude_books:
                     cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s",(source_id[0], revision, nbkn,))
                     ntokens = cursor.fetchall()
                     for t in ntokens:
@@ -510,7 +535,14 @@ def bookwiseagt():
                 stoknwords = set(toknwords) -  set(ntoknwords)
                 output = stoknwords - set(translatedtokenlist)
                 cursor.close()
-                return json.dumps(list(output))
+                result = [['TOKEN', 'TRANSLATION']]
+                for i in list(stoknwords):
+                    result.append([i])
+                sheet = pyexcel.Sheet(result)
+                output = flask.make_response(sheet.xlsx)
+                output.headers["Content-Disposition"] = "attachment; filename=export.xlsx"
+                output.headers["Content-type"] = "xlsx"
+                return output
         elif b and c:
             return '{"success":false, "message":" %s and %s is not available. Upload it."}'  %((list(b)),list(c))
         elif not b and c:
@@ -630,39 +662,70 @@ def tokencount():
 @app.route("/v1/uploadtokentranslation", methods=["POST"])
 @check_token
 def upload_tokens_translation():
-    req = request.get_json(True)
-    language = req["language"]
-    version = req["version"]
-    revision = req["revision"]
-    tokenwords = req["tokenwords"]
-    targetlang = req["targetlang"]
+    language = request.form["language"]
+    version = request.form["version"]
+    revision = request.form["revision"]
+    tokenwords = request.files['tokenwords']
+    targetlang = request.form["targetlang"]
+    changes = []
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s ", (language, version))
     source_id = cursor.fetchone()
     if not source_id:
         return '{"success":false, "message":"Unable to locate the language, version and revision number specified"}'
-    cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
-    transtokens = cursor.fetchall()
-    if transtokens:
-        for k, v in tokenwords.items():
-            if v:
-                cursor.execute("SELECT token from autotokentranslations WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (k, source_id[0], revision, targetlang))
-                if cursor.fetchone():
-                    cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
-                else:
+    exl = tokenwords.read()
+    with open("tokn.xlsx", "wb") as o:
+        o.write(exl)
+    tokenwords = open_workbook('tokn.xlsx')
+    book = tokenwords
+    p=book.sheet_by_index(0)
+    count = 0
+    for c in range(p.nrows):                                   # to find an empty cell
+        cell = p.cell(c,1).value
+        if cell:
+            count = count + 1
+    if count > 1:
+        token_c = (token_c.value for token_c in p.col(0,1))
+        tran = (tran.value for tran in p.col(1,1))
+        data = dict(zip(token_c, tran))
+        dic = ast.literal_eval(json.dumps(data))
+        cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
+        transtokens = cursor.fetchall()
+        if transtokens:
+            token_list = []
+            for i in transtokens:
+                token_list.append(i[0])
+            for k, v in dic.items():
+                if v:
+                    if k in token_list:
+                        cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
+                    else:
+                        cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                    changes.append(v)
+            cursor.close()
+            connection.commit()
+            filename = "tokn.xlsx"
+            if os.path.exists(filename):
+                os.remove(filename)
+        else:
+            for k, v in dic.items():
+                if v:
                     cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
-        cursor.close()
-        connection.commit()
-        return '{"success":true, "message":"Token translations have been updated."}'
+                    changes.append(v)
+            cursor.close()
+            connection.commit()
+            filename = "tokn.xlsx"
+            if os.path.exists(filename):
+                os.remove(filename)
+        if changes:
+            logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
+            return '{"success":true, "message":"Token translation have been uploaded successfully"}'
+        else:
+            logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
+            return '{"success":false, "message":"Incorrect file format used to upload token translation"}'
     else:
-        cursor = connection.cursor()
-        for k, v in tokenwords.items():
-            if v:
-                cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
-        cursor.close()
-        connection.commit()
-        return '{"success":true, "message":"Token translation have been uploaded successfully"}'
+        return '{"success":false, "message":"Tokens have no translation"}'
 
 @app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])
 @check_token
@@ -679,7 +742,71 @@ def upload_taggedtokens_translation():
         cursor.execute("INSERT INTO taggedtokens (token,strongs_num,language,version,revision_num) VALUES (%s,%s,%s,%s,%s)",(v,k,language,version,revision))
     cursor.close()
     connection.commit()
-    return '{success:true, message:"Tagged token have been updated."}'
+    return '{"success":true, "message":"Tagged token have been updated."}'
+
+@app.route("/v1/emailslist", methods=["GET"])
+@check_token
+def emails_list():
+    connection = get_db()
+    cursor = connection.cursor()
+    user_email = request.email
+    auth = request.headers.get('Authorization', None)
+    parts = auth.split()
+    if len(parts) == 2:
+        token = parts[1]
+        options = {
+            'verify_sub': True,
+            'verify_exp': True
+        }
+        algorithm = 'HS256'
+        leeway = timedelta(seconds=10)
+        decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
+        user_role = decoded['role']
+        if user_role == 'superadmin':
+            cursor.execute("SELECT email FROM users")
+            email_list = []
+            for e in cursor.fetchall():
+                email_list.append(e[0])
+            email_list.remove(str(user_email))
+            return json.dumps(email_list)
+        else:
+            return '{success:false, message:"You are not authorized to view this page. Contact Administrator"}'
+    else:
+        raise TokenError('Invalid Token', 'Works only on autographamt.com')
+
+@app.route("/v1/superadminapproval", methods = ["POST"])
+@check_token
+def super_admin_approval():
+    req = request.get_json(True)
+    connection = get_db()
+    cursor = connection.cursor()
+    admin = req["admin"]
+    email = req["email"]
+    auth = request.headers.get('Authorization', None)
+    parts = auth.split()
+    if len(parts) == 2:
+        token = parts[1]
+        options = {
+            'verify_sub': True,
+            'verify_exp': True
+        }
+        algorithm = 'HS256'
+        leeway = timedelta(seconds=10)
+        decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
+        user_role = decoded['role']
+        if user_role == 'superadmin' and admin == "True":
+            cursor.execute("UPDATE users SET role_id = 2 WHERE email = %s",(email,))
+            cursor.close()
+            connection.commit()
+            return '{"success":true, "message":" ' + str(email) + ' has been provided with Administrator privilege."}'
+        elif user_role == 'superadmin' and admin == "False":
+            cursor.execute("UPDATE users SET role_id = 3 WHERE email = %s",(email,))
+            cursor.close()
+            connection.commit()
+            return '{"success":true, "message":"Administrator privileges has been removed of user: ' + str(email) + '."}'
+        elif user_role != 'superadmin':
+            return '{"success":false, "message":"You are not authorized to edit this page. Contact Administrator"}'
+    return '{}\n'
 
 @app.route("/v1/generateconcordance", methods=["POST"])
 @check_token
@@ -764,7 +891,6 @@ def get_concordance():
             con[str(book)] = str(concordances)
         cursor.close()
         return json.dumps(con)
-
 
 @app.route("/v1/translations", methods=["POST"])
 @check_token
