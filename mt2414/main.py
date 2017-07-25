@@ -727,6 +727,7 @@ def upload_tokens_translation():
     else:
         return '{"success":false, "message":"Tokens have no translation"}'
 
+
 @app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])
 @check_token
 def upload_taggedtokens_translation():
@@ -891,6 +892,7 @@ def get_concordance():
             con[str(book)] = str(concordances)
         cursor.close()
         return json.dumps(con)
+
 
 @app.route("/v1/translations", methods=["POST"])
 @check_token
