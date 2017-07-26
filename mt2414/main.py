@@ -529,6 +529,7 @@ def bookwiseagt():
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
     source_id = cursor.fetchone()
+    email_id = request.email
     if not source_id:
         return '{"success":false, "message":"Source is not available. Upload source."}'
     else:
