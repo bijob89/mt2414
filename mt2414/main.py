@@ -566,7 +566,7 @@ def bookwiseagt():
                     result.append([i])
                 sheet = pyexcel.Sheet(result)
                 output = flask.make_response(sheet.xlsx)
-                output.headers["Content-Disposition"] = "attachment; filename=%s.xlsx" %s(bkn)
+                output.headers["Content-Disposition"] = "attachment; filename=%s.xlsx" %(bkn)
                 output.headers["Content-type"] = "xlsx"
                 return output
             elif include_books and exclude_books:
