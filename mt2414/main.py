@@ -25,6 +25,7 @@ import flask
 import pyexcel
 import logging
 
+
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
 PO_METADATA = {
@@ -340,9 +341,9 @@ def sourceid():
 @app.route("/v1/sources", methods=["POST"])
 @check_token
 def sources():
-    req = request.get_json(True)
-    content = req["content"]
-    source_id = req["source_id"]
+    content = request.files['content']
+    fname = content.read()
+    source_id = request.form["source_id"]
     auth = request.headers.get('Authorization', None)
     parts = auth.split()
     email_id = request.email
@@ -365,35 +366,34 @@ def sources():
             all_books = cursor.fetchall()
             for i in range(0, len(all_books)):
                 books.append(all_books[i][0])
-            for files in content:
-                base_convert = ((base64.b64decode(files)).decode('utf-8')).replace('\r','')
-                book_name = (re.search('(?<=\id )\w{3}', base_convert)).group(0)
-                text_file = re.sub(r'(\n\\rem.*)','', base_convert)
-                text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
-                if book_name in books:
-                    count = 0
-                    count1 = 0
-                    for i in range(0, len(all_books)):
-                        if all_books[i][1] != text_file and book_name == all_books[i][0]:
-                            count = count + 1
-                        elif all_books[i][1] == text_file and book_name == all_books[i][0]:
-                            count1 = all_books[i][2]
-                    if count1 == 0 and count != 0:
-                        revision_num = count + 1
-                        cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
-                        changes.append(book_name)
-                        logging.warning('User \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded revised version of \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
-                        token_set = tokenise(text_file)
-                        for t in token_set:
-                            cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
-                elif book_name not in books:
-                    revision_num = 1
+            nxl = (fname.decode('utf-8').replace('\r',''))
+            book_name = (re.search('(?<=\id )\w{3}', nxl)).group(0)
+            text_file = re.sub(r'(\n\\rem.*)','', nxl)
+            text_file = re.sub('(\\\\id .*)','\\id ' + str(book_name), text_file)
+            if book_name in books:
+                count = 0
+                count1 = 0
+                for i in range(0, len(all_books)):
+                    if all_books[i][1] != text_file and book_name == all_books[i][0]:
+                        count = count + 1
+                    elif all_books[i][1] == text_file and book_name == all_books[i][0]:
+                        count1 = all_books[i][2]
+                if count1 == 0 and count != 0:
+                    revision_num = count + 1
                     cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
-                    logging.warning('User \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded new book \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
                     changes.append(book_name)
+                    logging.warning('User \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded revised version of \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
                     token_set = tokenise(text_file)
                     for t in token_set:
                         cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
+            elif book_name not in books:
+                revision_num = 1
+                cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
+                logging.warning('User \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded new book \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
+                changes.append(book_name)
+                token_set = tokenise(text_file)
+                for t in token_set:
+                    cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
         else:
             return '{"success":false, "message":"You are not authorized to view this page. Contact Administrator"}'
     else:
@@ -566,7 +566,7 @@ def bookwiseagt():
                     result.append([i])
                 sheet = pyexcel.Sheet(result)
                 output = flask.make_response(sheet.xlsx)
-                output.headers["Content-Disposition"] = "attachment; filename=export.xlsx"
+                output.headers["Content-Disposition"] = "attachment; filename=%s.xlsx" %s(bkn)
                 output.headers["Content-type"] = "xlsx"
                 return output
             elif include_books and exclude_books:
@@ -588,7 +588,7 @@ def bookwiseagt():
                     result.append([i])
                 sheet = pyexcel.Sheet(result)
                 output = flask.make_response(sheet.xlsx)
-                output.headers["Content-Disposition"] = "attachment; filename=export.xlsx"
+                output.headers["Content-Disposition"] = "attachment; filename=%s.xlsx" %(bkn)
                 output.headers["Content-type"] = "xlsx"
                 return output
         elif b and c:
@@ -773,7 +773,7 @@ def upload_tokens_translation():
             return '{"success":true, "message":"Token translation have been uploaded successfully"}'
         else:
             logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
-            return '{"success":false, "message":"Tokens cannot be updated"}'
+            return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
     else:
         return '{"success":false, "message":"Tokens have no translation"}'
 
