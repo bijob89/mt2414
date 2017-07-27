@@ -301,22 +301,6 @@ def create_sources():
         else:
             return '{"success":false, "message":"You don\'t have permission to access this page"}'
 
-@app.route("/v1/sourceslist", methods=["GET"])
-@check_token
-def sources_list():
-    connection = get_db()
-    cursor = connection.cursor()
-    cursor.execute("SELECT id, language, version, id FROM sources")
-    rst = cursor.fetchall()
-    cursor.close()
-    tr = {}
-    if not rst:
-        return '{"success":false, "message":"No Sources available. Create new sources."}'
-    else:
-        for item in rst:
-            tr[item[0]] = [item[1], item[2]]
-        return json.dumps(tr)
-
 def tokenise(content):
     remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])','', content)
     token_list = nltk.word_tokenize(remove_punct)
