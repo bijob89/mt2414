@@ -951,6 +951,7 @@ def translations():
                 tokens[t] = tr
         tr = {}
         tag_check = ['~', '$', '\q', '\ide', '\toc', '\mt', '\h', '2', '(', '_', '“', '5', '.', "'", ':', '%', '#', ')', 'a', '^', '’', '<', '{', '”', '।', '?', '|', 'b', ';', '-', ']', '`', '0', '[', '/', '"', '6', '1', '=', '8', '+', '*', '9', 'c', '@', '3', '!', '>', ',', '4', '\\', '‘', '7', '&', '}', '\\v', '\\c', '\\p', '\\s', '\\id']
+        untranslated = []
         for book in books:
             cursor.execute("SELECT content FROM sourcetexts WHERE source_id = %s AND revision_num = %s and book_name = %s", (source_id, revision, book))
             source_content = cursor.fetchone()
@@ -960,14 +961,14 @@ def translations():
                 changes.append(book_name)
                 hyphenated_words = re.findall(r'\w+-\w+', source_content[0])
                 content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’1234567890 ])', r' \1 ', source_content[0])
-                untranlsated = []
                 for line in content.split("\n"):
                     line_words = nltk.word_tokenize(line)
                     new_line_words = []
                     for word in line_words:
                         if word not in tag_check:
                             new_line_words.append(tokens.get(word, " >>>"+str(word)+"<<<"))
-                            untranlsated.append(word)
+                            if word not in tokens:
+                                untranslated.append(word)
                         else:
                             new_line_words.append(tokens.get(word, word))
                     out_line = " ".join(new_line_words)
@@ -989,7 +990,7 @@ def translations():
                 out_final = re.sub(r'\\toc2', r'\\toc2 ', out_final)
                 out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
                 out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name) + "\n", out_final)
-                tr["untranlsated"] = "\n".join(list(set(untranlsated)))
+                tr["untranslated"] = "\n".join(list(set(untranslated)))
                 tr[book_name] = out_final
             else:
                 changes1.append(book)
