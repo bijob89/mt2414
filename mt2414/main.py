@@ -478,7 +478,7 @@ def revision():
         for rst in revision:
             revision_list.append(rst[0])
         cursor.close()
-        return json.dumps(list(revision_list))
+        return json.dumps(list(set(revision_list)))
 
 @app.route("/v1/book", methods=["POST"])
 @check_token
