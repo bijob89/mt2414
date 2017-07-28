@@ -1,6 +1,5 @@
 import os
 import uuid
-import sqlite3
 import json
 import psycopg2
 from functools import wraps
@@ -13,15 +12,11 @@ from flask import Flask, request, session, redirect
 from flask import g
 from flask_cors import CORS, cross_origin
 import nltk
-import polib
 import re
-import base64
 import xlrd
 from xlrd import open_workbook
 import json
 import ast
-from django.http import HttpResponse
-import flask_excel as excel
 import flask
 import pyexcel
 import logging
