@@ -960,12 +960,14 @@ def translations():
                 changes.append(book_name)
                 hyphenated_words = re.findall(r'\w+-\w+', source_content[0])
                 content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’1234567890 ])', r' \1 ', source_content[0])
+                untranlsated = []
                 for line in content.split("\n"):
                     line_words = nltk.word_tokenize(line)
                     new_line_words = []
                     for word in line_words:
                         if word not in tag_check:
                             new_line_words.append(tokens.get(word, " >>>"+str(word)+"<<<"))
+                            untranlsated.append(word)
                         else:
                             new_line_words.append(tokens.get(word, word))
                     out_line = " ".join(new_line_words)
@@ -987,6 +989,7 @@ def translations():
                 out_final = re.sub(r'\\toc2', r'\\toc2 ', out_final)
                 out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
                 out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name) + "\n", out_final)
+                tr["untranlsated"] = "\n".join(list(set(untranlsated)))
                 tr[book_name] = out_final
             else:
                 changes1.append(book)
