@@ -1022,8 +1022,9 @@ def translations():
             if tr:
                 tokens[t] = tr
         tr = {}
-        tag_check = ['~', '$', '\q', '\ide', '\toc', '\mt', '\h', '2', '(', '_', '“', '5', '.', "'", ':', '%', '#', ')', 'a', '^', '’', '<', '{', '”', '।', '?', '|', 'b', ';', '-', ']', '`', '0', '[', '/', '"', '6', '1', '=', '8', '+', '*', '9', 'c', '@', '3', '!', '>', ',', '4', '\\', '‘', '7', '&', '}', '\\v', '\\c', '\\p', '\\s', '\\id']
+        tag_check = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9','!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~', '।']
         untranslated = []
+        pattern_match = re.compile(r'\\[a-z]{1,3}\d?')
         for book in books:
             cursor.execute("SELECT content FROM sourcetexts WHERE source_id = %s AND revision_num = %s and book_name = %s", (source_id, revision, book))
             source_content = cursor.fetchone()
@@ -1032,12 +1033,13 @@ def translations():
                 book_name = (re.search('(?<=\id )\w+', source_content[0])).group(0)
                 changes.append(book_name)
                 hyphenated_words = re.findall(r'\w+-\w+', source_content[0])
-                content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’1234567890 ])', r' \1 ', source_content[0])
+                content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’])', r' \1 ', source_content[0])
                 for line in content.split("\n"):
                     line_words = nltk.word_tokenize(line)
                     new_line_words = []
                     for word in line_words:
-                        if word not in tag_check:
+                        # if word not in tag_check:
+                        if word not in tag_check and not pattern_match.match(word):
                             new_line_words.append(tokens.get(word, " >>>"+str(word)+"<<<"))
                             if word not in tokens:
                                 untranslated.append(word)
@@ -1054,14 +1056,12 @@ def translations():
                 out_final = re.sub(r'([\‘\“])\s?', r'\1', out_final)
                 out_final = re.sub(r'-\s', '-', out_final)
                 out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
+                out_final = re.sub(r'>>>(\d+)<<<', r'\1', out_final)
                 out_final = re.sub(r'\[ ', r' [', out_final)
                 out_final = re.sub(r'\( ', r' (', out_final)
-                out_final = re.sub(r'(\n\\rem.*)', '', out_final)
-                out_final = re.sub(r' >>>\\toc<<< ', r'\n\\toc', out_final)
-                out_final = re.sub(r'\\toc1', r'\\toc1 ', out_final)
                 out_final = re.sub(r'\\toc2', r'\\toc2 ', out_final)
                 out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
-                out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name) + "\n", out_final)
+                out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name), out_final)
                 tr["untranslated"] = "\n".join(list(set(untranslated)))
                 tr[book_name] = out_final
             else:
