@@ -466,12 +466,12 @@ def revision():
     cursor = connection.cursor()
     cursor.execute("SELECT st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s", (language, version))
     revision = cursor.fetchall()
-    revision_list = []
+    revision_list=set()
     if not revision:
         return '{"success":false, "message":"No books available"}'
     else:
         for rst in revision:
-            revision_list.append(rst[0])
+            revision_list.add(rst[0])
         cursor.close()
         return json.dumps(list(set(revision_list)))
 
@@ -606,7 +606,7 @@ def autotokens():
         cursor.close()
         return json.dumps(tr)
 
-@app.route("/v1/tokenlist", methods=["POST"])
+@app.route("/v1/tokenlist", methods=["POST","GET"])
 @check_token
 def tokenlist():
     req = request.get_json(True)
@@ -614,18 +614,17 @@ def tokenlist():
     version = req["version"]
     revision = req["revision"]
     targetlang = req["targetlang"]
+    book_list = req["book_list"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (sourcelang, version))
+    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
     source_id = cursor.fetchone()
     if not source_id:
         return '{"success":false, "message":"Source is not available. Upload source."}'
     else:
-        cursor.execute("SELECT st.book_name FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s AND st.revision_num = %s", (sourcelang, version, revision))
-        books = cursor.fetchall()
-        cursor.execute("SELECT token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s", (revision, targetlang, source_id[0]))
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
         translated_token = cursor.fetchall()
-        cursor.execute("SELECT token FROM autotokentranslations WHERE translated_token IS NULL AND revision_num = %s AND targetlang = %s AND source_id = %s", (revision, targetlang, source_id[0]))
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
         not_trantoken = cursor.fetchall()
         if not translated_token:
             return '{"success":false, "message":"Translated tokens are not available. Upload token translation ."}'
@@ -637,19 +636,22 @@ def tokenlist():
             for nt in not_trantoken:
                 nottranslated.append(nt[0])
             token_list = []
-            result = {}
-            for bk in books:
-                token_list = []
-                cursor.execute("SELECT token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk[0]))
+            for bk in book_list:
+                cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s",(revision, source_id[0], bk))
                 cluster_token = cursor. fetchall()
                 for ct in cluster_token:
                     token_list.append(ct[0])
-                output1 = set(token_list) - set(token)
-                output2 = set(token_list) & set(not_trantoken)
-                output = set(output1) | set(output2)
-                result[bk[0]] = list(output)
-            cursor.close()
-            return json.dumps(result)
+            output1 = set(token_list) - set(token)
+            output2 = set(token_list) & set(not_trantoken)
+            output = set(output1) | set(output2)
+            result = [['TOKEN', 'TRANSLATION']]
+            for i in list(output):
+                result.append([i])
+            sheet = pyexcel.Sheet(result)
+            output = flask.make_response(sheet.xlsx)
+            output.headers["Content-Disposition"] = "attachment; filename=%s.xlsx" %(bk)
+            output.headers["Content-type"] = "xlsx"
+            return output
 
 @app.route("/v1/tokencount", methods=["POST"])
 @check_token
@@ -676,7 +678,6 @@ def tokencount():
             token = []
             for tk in translated_token:
                 token.append(tk[0])
-            token_list = []
             result = {}
             for bk in books:
                 token_list = []
@@ -684,9 +685,10 @@ def tokencount():
                 cluster_token = cursor. fetchall()
                 for ct in cluster_token:
                     token_list.append(ct[0])
+                    total_token = len(token_list)
                 output = set(token_list) - set(token)
                 count = len(list(output))
-                result[bk[0]] = count
+                result[bk[0]] = count, total_token
             cursor.close()
             return json.dumps(result)
 
@@ -751,6 +753,76 @@ def upload_tokens_translation():
         if changes:
             logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
             return '{"success":true, "message":"Token translation have been uploaded successfully"}'
+        else:
+            logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
+            return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
+    else:
+        return '{"success":false, "message":"Tokens have no translation"}'
+
+@app.route("/v1/updatetokentranslation", methods=["POST"])
+@check_token
+def update_tokens_translation():
+    language = request.form["language"]
+    version = request.form["version"]
+    revision = request.form["revision"]
+    tokenwords = request.files['tokenwords']
+    targetlang = request.form["targetlang"]
+    changes = []
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s ", (language, version))
+    source_id = cursor.fetchone()
+    if not source_id:
+        return '{"success":false, "message":"Unable to locate the language, version and revision number specified"}'
+    exl = tokenwords.read()
+    with open("tokn.xlsx", "wb") as o:
+        o.write(exl)
+    tokenwords = open_workbook('tokn.xlsx')
+    book = tokenwords
+    p=book.sheet_by_index(0)
+    count = 0
+    for c in range(p.nrows):                                   # to find an empty cell
+        cell = p.cell(c,1).value
+        if cell:
+            count = count + 1
+    if count > 1:
+        token_c = (token_c.value for token_c in p.col(0,1))
+        tran = (tran.value for tran in p.col(1,1))
+        data = dict(zip(token_c, tran))
+        dic = ast.literal_eval(json.dumps(data))
+        cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
+        transtokens = cursor.fetchall()
+        if transtokens:
+            token_list = []
+            for i in transtokens:
+                token_list.append(i[0])
+            for k, v in dic.items():
+                if v:
+                    if k in token_list:
+                        cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
+                        changes.append(k)
+                    else:
+                        cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                        changes.append(k)
+            cursor.close()
+            connection.commit()
+            filename = "tokn.xlsx"
+            if os.path.exists(filename):
+                os.remove(filename)
+        else:
+            for k, v in dic.items():
+                if v:
+                    cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                    changes.append(k)
+            cursor.close()
+            connection.commit()
+            filename = "tokn.xlsx"
+            if os.path.exists(filename):
+                os.remove(filename)
+            return '{"success":true, "message":"Token translation have been uploaded successfully"}'
+        if changes:
+            logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
+            return '{"success":true, "message":"Token translation have been updated"}'
         else:
             logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
             return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
