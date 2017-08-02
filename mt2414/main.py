@@ -466,7 +466,7 @@ def revision():
     cursor = connection.cursor()
     cursor.execute("SELECT st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s", (language, version))
     revision = cursor.fetchall()
-    revision_list=set()
+    revision_list = set()
     if not revision:
         return '{"success":false, "message":"No books available"}'
     else:
@@ -608,7 +608,7 @@ def autotokens():
         cursor.close()
         return json.dumps(tr)
 
-@app.route("/v1/tokenlist", methods=["POST","GET"])
+@app.route("/v1/tokenlist", methods=["POST", "GET"])
 @check_token
 def tokenlist():
     req = request.get_json(True)
@@ -619,14 +619,14 @@ def tokenlist():
     book_list = req["book_list"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s",(sourcelang, version))
+    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (sourcelang, version))
     source_id = cursor.fetchone()
     if not source_id:
         return '{"success":false, "message":"Source is not available. Upload source."}'
     else:
-        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s", (revision, targetlang, source_id[0]))
         translated_token = cursor.fetchall()
-        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NULL AND revision_num = %s AND targetlang = %s AND source_id = %s",(revision, targetlang, source_id[0]))
+        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NULL AND revision_num = %s AND targetlang = %s AND source_id = %s", (revision, targetlang, source_id[0]))
         not_trantoken = cursor.fetchall()
         if not translated_token:
             return '{"success":false, "message":"Translated tokens are not available. Upload token translation ."}'
@@ -639,7 +639,7 @@ def tokenlist():
                 nottranslated.append(nt[0])
             token_list = []
             for bk in book_list:
-                cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s",(revision, source_id[0], bk))
+                cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk))
                 cluster_token = cursor. fetchall()
                 for ct in cluster_token:
                     token_list.append(ct[0])
@@ -651,7 +651,7 @@ def tokenlist():
                 result.append([i])
             sheet = pyexcel.Sheet(result)
             output = flask.make_response(sheet.xlsx)
-            output.headers["Content-Disposition"] = "attachment; filename=%s.xlsx" %(bk)
+            output.headers["Content-Disposition"] = "attachment; filename=%s.xlsx" % (bk)
             output.headers["Content-type"] = "xlsx"
             return output
 
@@ -781,15 +781,15 @@ def update_tokens_translation():
         o.write(exl)
     tokenwords = open_workbook('tokn.xlsx')
     book = tokenwords
-    p=book.sheet_by_index(0)
+    p = book.sheet_by_index(0)
     count = 0
     for c in range(p.nrows):                                   # to find an empty cell
-        cell = p.cell(c,1).value
+        cell = p.cell(c, 1).value
         if cell:
             count = count + 1
     if count > 1:
-        token_c = (token_c.value for token_c in p.col(0,1))
-        tran = (tran.value for tran in p.col(1,1))
+        token_c = (token_c.value for token_c in p.col(0, 1))
+        tran = (tran.value for tran in p.col(1, 1))
         data = dict(zip(token_c, tran))
         dic = ast.literal_eval(json.dumps(data))
         cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
@@ -804,7 +804,7 @@ def update_tokens_translation():
                         cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
                         changes.append(k)
                     else:
-                        cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                        cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (k, v, targetlang, revision, source_id[0]))
                         changes.append(k)
             cursor.close()
             connection.commit()
@@ -814,7 +814,7 @@ def update_tokens_translation():
         else:
             for k, v in dic.items():
                 if v:
-                    cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                    cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (k, v, targetlang, revision, source_id[0]))
                     changes.append(k)
             cursor.close()
             connection.commit()
@@ -1024,7 +1024,7 @@ def translations():
             if tr:
                 tokens[t] = tr
         tr = {}
-        tag_check = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9','!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~', '।']
+        tag_check = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~', '।']
         untranslated = []
         pattern_match = re.compile(r'\\[a-z]{1,3}\d?')
         for book in books:
