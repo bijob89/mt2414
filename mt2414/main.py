@@ -1059,6 +1059,7 @@ def translations():
                 out_final = re.sub(r'-\s', '-', out_final)
                 out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
                 out_final = re.sub(r'>>>(\d+)<<<', r'\1', out_final)
+                out_final = re.sub(r'>>>(\d+)-(\d+)<<<', r'\1-\2', out_final)
                 out_final = re.sub(r'\[ ', r' [', out_final)
                 out_final = re.sub(r'\( ', r' (', out_final)
                 out_final = re.sub(r'\\toc2', r'\\toc2 ', out_final)
