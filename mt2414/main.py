@@ -227,7 +227,7 @@ def check_token(f):
                 raise TokenError('Invalid token', str(e))
         else:
             raise TokenError('Invalid header', 'Token contains spaces')
-        #raise TokenError('Invalid JWT header', 'Token missing')
+        # raise TokenError('Invalid JWT header', 'Token missing')
         return f(*args, **kwds)
     return wrapper
 
@@ -813,15 +813,15 @@ def update_tokens_translation():
                 o.write(exl)
             tokenwords = open_workbook('tokn.xlsx')
             book = tokenwords
-            p=book.sheet_by_index(0)
+            p = book.sheet_by_index(0)
             count = 0
             for c in range(p.nrows):                                   # to find an empty cell
-                cell = p.cell(c,1).value
+                cell = p.cell(c, 1).value
                 if cell:
                     count = count + 1
             if count > 1:
-                token_c = (token_c.value for token_c in p.col(0,1))
-                tran = (tran.value for tran in p.col(1,1))
+                token_c = (token_c.value for token_c in p.col(0, 1))
+                tran = (tran.value for tran in p.col(1, 1))
                 data = dict(zip(token_c, tran))
                 dic = ast.literal_eval(json.dumps(data))
                 cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
@@ -836,7 +836,7 @@ def update_tokens_translation():
                                 cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
                                 changes.append(k)
                             else:
-                                cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                                cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (k, v, targetlang, revision, source_id[0]))
                                 changes.append(k)
                     cursor.close()
                     connection.commit()
@@ -846,7 +846,7 @@ def update_tokens_translation():
                 else:
                     for k, v in dic.items():
                         if v:
-                            cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                            cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (k, v, targetlang, revision, source_id[0]))
                             changes.append(k)
                     cursor.close()
                     connection.commit()
