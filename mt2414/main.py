@@ -438,6 +438,24 @@ def language():
         cursor.close()
         return json.dumps(list(language_list))
 
+@app.route("/v1/targetlang", methods=["POST"])
+@check_token
+def targetlang():
+    req = request.get_json(True)
+    language = req["language"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT targetlang FROM autotokentranslations at LEFT JOIN sources s ON at.source_id = s.id WHERE s.language = %s", (language,))
+    targetlang = cursor.fetchall()
+    targetlang_list = set()
+    if not targetlang:
+        return '{"success":false, "message":"No Languages"}'
+    else:
+        for rst in targetlang:
+            targetlang_list.add(rst[0])
+        cursor.close()
+        return json.dumps(list(targetlang_list))
+
 @app.route("/v1/version", methods=["POST"])
 @check_token
 def version():
@@ -769,67 +787,85 @@ def update_tokens_translation():
     revision = request.form["revision"]
     tokenwords = request.files['tokenwords']
     targetlang = request.form["targetlang"]
-    changes = []
-    connection = get_db()
-    cursor = connection.cursor()
-    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s ", (language, version))
-    source_id = cursor.fetchone()
-    if not source_id:
-        return '{"success":false, "message":"Unable to locate the language, version and revision number specified"}'
-    exl = tokenwords.read()
-    with open("tokn.xlsx", "wb") as o:
-        o.write(exl)
-    tokenwords = open_workbook('tokn.xlsx')
-    book = tokenwords
-    p = book.sheet_by_index(0)
-    count = 0
-    for c in range(p.nrows):                                   # to find an empty cell
-        cell = p.cell(c, 1).value
-        if cell:
-            count = count + 1
-    if count > 1:
-        token_c = (token_c.value for token_c in p.col(0, 1))
-        tran = (tran.value for tran in p.col(1, 1))
-        data = dict(zip(token_c, tran))
-        dic = ast.literal_eval(json.dumps(data))
-        cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
-        transtokens = cursor.fetchall()
-        if transtokens:
-            token_list = []
-            for i in transtokens:
-                token_list.append(i[0])
-            for k, v in dic.items():
-                if v:
-                    if k in token_list:
-                        cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
-                        changes.append(k)
-                    else:
-                        cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (k, v, targetlang, revision, source_id[0]))
-                        changes.append(k)
-            cursor.close()
-            connection.commit()
-            filename = "tokn.xlsx"
-            if os.path.exists(filename):
-                os.remove(filename)
+    auth = request.headers.get('Authorization', None)
+    parts = auth.split()
+    email_id = request.email
+    if len(parts) == 2:
+        token = parts[1]
+        options = {
+            'verify_sub': True,
+            'verify_exp': True
+        }
+        algorithm = 'HS256'
+        leeway = timedelta(seconds=10)
+        decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
+        user_role = decoded['role']
+        if user_role == 'admin' or user_role == 'superadmin':
+            changes = []
+            connection = get_db()
+            cursor = connection.cursor()
+            cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s ", (language, version))
+            source_id = cursor.fetchone()
+            if not source_id:
+                return '{"success":false, "message":"Unable to locate the language, version and revision number specified"}'
+            exl = tokenwords.read()
+            with open("tokn.xlsx", "wb") as o:
+                o.write(exl)
+            tokenwords = open_workbook('tokn.xlsx')
+            book = tokenwords
+            p=book.sheet_by_index(0)
+            count = 0
+            for c in range(p.nrows):                                   # to find an empty cell
+                cell = p.cell(c,1).value
+                if cell:
+                    count = count + 1
+            if count > 1:
+                token_c = (token_c.value for token_c in p.col(0,1))
+                tran = (tran.value for tran in p.col(1,1))
+                data = dict(zip(token_c, tran))
+                dic = ast.literal_eval(json.dumps(data))
+                cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
+                transtokens = cursor.fetchall()
+                if transtokens:
+                    token_list = []
+                    for i in transtokens:
+                        token_list.append(i[0])
+                    for k, v in dic.items():
+                        if v:
+                            if k in token_list:
+                                cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
+                                changes.append(k)
+                            else:
+                                cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                                changes.append(k)
+                    cursor.close()
+                    connection.commit()
+                    filename = "tokn.xlsx"
+                    if os.path.exists(filename):
+                        os.remove(filename)
+                else:
+                    for k, v in dic.items():
+                        if v:
+                            cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)",(k, v, targetlang, revision, source_id[0]))
+                            changes.append(k)
+                    cursor.close()
+                    connection.commit()
+                    filename = "tokn.xlsx"
+                    if os.path.exists(filename):
+                        os.remove(filename)
+                    return '{"success":true, "message":"Token translation have been uploaded successfully"}'
+                if changes:
+                    logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
+                    return '{"success":true, "message":"Token translation have been updated"}'
+                else:
+                    logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
+                    return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
+            else:
+                return '{"success":false, "message":"Tokens have no translation"}'
         else:
-            for k, v in dic.items():
-                if v:
-                    cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (k, v, targetlang, revision, source_id[0]))
-                    changes.append(k)
-            cursor.close()
-            connection.commit()
-            filename = "tokn.xlsx"
-            if os.path.exists(filename):
-                os.remove(filename)
-            return '{"success":true, "message":"Token translation have been uploaded successfully"}'
-        if changes:
-            logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
-            return '{"success":true, "message":"Token translation have been updated"}'
-        else:
-            logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
-            return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
+            return '{"success":false, "message":"You are not authorized to view this page. Contact Administrator"}'
     else:
-        return '{"success":false, "message":"Tokens have no translation"}'
+        raise TokenError('Invalid header', 'Access token required')
 
 @app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])
 @check_token
