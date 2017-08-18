@@ -83,9 +83,9 @@ def auth():
     role = rst[2]
     if password_hash == password_hash_new:
         access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1), 'role': role}, jwt_hs256_secret, algorithm='HS256')
-        logging.warning('User \'' + str(email) + '\' logged in successfully')
+        logging.warning('User:\'' + str(email) + '\' logged in successfully')
         return '{"access_token": "%s", "role":"%s"}\n' % (access_token.decode('utf-8'), role)
-    logging.warning('User \'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
+    logging.warning('User:\'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
     return '{"success":false, "message":"Incorrect Password"}'
 
 @app.route("/v1/registrations", methods=["POST"])
@@ -347,7 +347,11 @@ def sources():
             for i in range(0, len(all_books)):
                 books.append(all_books[i][0])
             nxl = (fname.decode('utf-8').replace('\r', ''))
-            book_name = (re.search('(?<=\id )\w{3}', nxl)).group(0)
+            book_name_check = re.search('(?<=\id )\w{3}', nxl)
+            if not book_name_check:
+                logging.warning('User:\'' + str(email_id) + '(' + str(user_role) + ')\'. File content \'' + str(content) + '\' in incorrect format.')
+                return '{"success":false, "message":"Upload Failed. File content in incorrect format."}'
+            book_name = book_name_check.group(0)
             text_file = re.sub(r'(\n\\rem.*)', '', nxl)
             text_file = re.sub('(\\\\id .*)', '\\id ' + str(book_name), text_file)
             if book_name in books:
@@ -362,14 +366,14 @@ def sources():
                     revision_num = count + 1
                     cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
                     changes.append(book_name)
-                    logging.warning('User \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded revised version of \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
+                    logging.warning('User:\'' + str(email_id) + '(' + str(user_role) + ')\' uploaded revised version of \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
                     token_set = tokenise(text_file)
                     for t in token_set:
                         cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
             elif book_name not in books:
                 revision_num = 1
                 cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
-                logging.warning('User \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded new book \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
+                logging.warning('User:\'' + str(email_id) + '(' + str(user_role) + ')\' uploaded new book \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
                 changes.append(book_name)
                 token_set = tokenise(text_file)
                 for t in token_set:
@@ -720,6 +724,7 @@ def upload_tokens_translation():
     revision = request.form["revision"]
     tokenwords = request.files['tokenwords']
     targetlang = request.form["targetlang"]
+    email_id = request.email
     changes = []
     connection = get_db()
     cursor = connection.cursor()
@@ -730,7 +735,11 @@ def upload_tokens_translation():
     exl = tokenwords.read()
     with open("tokn.xlsx", "wb") as o:
         o.write(exl)
-    tokenwords = open_workbook('tokn.xlsx')
+    try:
+        tokenwords = open_workbook('tokn.xlsx')
+    except:
+        logging.warning('User:\'' + str(email_id) + '\'. Token translation upload failed. Invalid file format.')
+        return '{"success":false, "message":"Inlvalid file format. Upload correct format of xls/xlsx files."}'
     book = tokenwords
     p = book.sheet_by_index(0)
     count = 0
@@ -771,10 +780,10 @@ def upload_tokens_translation():
             if os.path.exists(filename):
                 os.remove(filename)
         if changes:
-            logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
+            logging.warning('User:\'' + str(email_id) + '\' uploaded translation of tokens successfully')
             return '{"success":true, "message":"Token translation have been uploaded successfully"}'
         else:
-            logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
+            logging.warning('User:\'' + str(email_id) + '\' upload of token translation unsuccessfully')
             return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
     else:
         return '{"success":false, "message":"Tokens have no translation"}'
@@ -1096,6 +1105,7 @@ def translations():
                 out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
                 out_final = re.sub(r'>>>(\d+)<<<', r'\1', out_final)
                 out_final = re.sub(r'>>>(\d+)-(\d+)<<<', r'\1-\2', out_final)
+                out_final = re.sub(r'>>>(\d+)—(\d+)<<<', r'\1—\2', out_final)
                 out_final = re.sub(r'\[ ', r' [', out_final)
                 out_final = re.sub(r'\( ', r' (', out_final)
                 out_final = re.sub(r'\\toc2', r'\\toc2 ', out_final)
