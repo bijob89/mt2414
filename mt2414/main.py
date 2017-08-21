@@ -352,7 +352,7 @@ def sources():
                 logging.warning('User:\'' + str(email_id) + '(' + str(user_role) + ')\'. File content \'' + str(content) + '\' in incorrect format.')
                 return '{"success":false, "message":"Upload Failed. File content in incorrect format."}'
             book_name = book_name_check.group(0)
-            text_file = re.sub(r'(\n\\rem.*)', '', nxl)
+            text_file = re.sub(r'(\\rem.*)', '', nxl)
             text_file = re.sub('(\\\\id .*)', '\\id ' + str(book_name), text_file)
             if book_name in books:
                 count = 0
@@ -864,10 +864,10 @@ def update_tokens_translation():
                         os.remove(filename)
                     return '{"success":true, "message":"Token translation have been uploaded successfully"}'
                 if changes:
-                    logging.warning('User \'' + str(request.email) + '\' uploaded translation of tokens successfully')
+                    logging.warning('User:\'' + str(request.email) + '\' uploaded translation of tokens successfully')
                     return '{"success":true, "message":"Token translation have been updated"}'
                 else:
-                    logging.warning('User \'' + str(request.email) + '\' upload of token translation unsuccessfully')
+                    logging.warning('User:\'' + str(request.email) + '\' upload of token translation unsuccessfully')
                     return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
             else:
                 return '{"success":false, "message":"Tokens have no translation"}'
@@ -1108,9 +1108,13 @@ def translations():
                 out_final = re.sub(r'>>>(\d+)—(\d+)<<<', r'\1—\2', out_final)
                 out_final = re.sub(r'\[ ', r' [', out_final)
                 out_final = re.sub(r'\( ', r' (', out_final)
+                out_final = re.sub(r'\n', r'\n\n', out_final)
+                out_final = re.sub(r'\'\s', r" '", out_final)
+                out_final = re.sub(r'\n\n', r'\n', out_final)
                 out_final = re.sub(r'\\toc2', r'\\toc2 ', out_final)
                 out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
                 out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name), out_final)
+                out_final = re.sub(r'\\rem.*', '', out_final)
                 tr["untranslated"] = "\n".join(list(set(untranslated)))
                 tr[book_name] = out_final
             else:
