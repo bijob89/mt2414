@@ -74,18 +74,19 @@ def auth():
     if not est:
         logging.warning('Unregistered user \'%s\' login attempt unsuccessful' % email)
         return '{"success":false, "message":"Invalid email"}'
-    cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s", (email,))
+    cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s", (email,))
     rst = cursor.fetchone()
     if not rst:
         return '{"success":false, "message":"Email is not Verified"}'
     password_hash = rst[0].hex()
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
+    role = rst[2]
     if password_hash == password_hash_new:
-        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)}, jwt_hs256_secret, algorithm='HS256')
-        logging.warning('User:\'' + str(email) + '\' logged in successfully')
-        return '{"access_token": "%s"}\n' % (access_token.decode('utf-8'))
-    logging.warning('User:\'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
+        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1), 'role': role}, jwt_hs256_secret, algorithm='HS256')
+        logging.warning('User \'' + str(email) + '\' logged in successfully')
+        return '{"access_token": "%s"}\n' % (access_token.decode('utf-8'),)
+    logging.warning('User \'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
     return '{"success":false, "message":"Incorrect Password"}'
 
 @app.route("/v1/registration", methods=["POST"])
