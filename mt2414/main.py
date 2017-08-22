@@ -1,6 +1,6 @@
 import os
 import uuid
-import json
+import urllib.request, json
 import psycopg2
 from functools import wraps
 from datetime import datetime, timedelta
@@ -20,6 +20,7 @@ import ast
 import flask
 import pyexcel
 import logging
+import pickle
 
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -64,7 +65,7 @@ def close_db(error):
 
 @app.route("/v1/auth", methods=["POST"])
 def auth():
-    email = request.form["username"]
+    email = request.form["email"]
     password = request.form["password"]
     connection = get_db()
     cursor = connection.cursor()
@@ -73,22 +74,21 @@ def auth():
     if not est:
         logging.warning('Unregistered user \'%s\' login attempt unsuccessful' % email)
         return '{"success":false, "message":"Invalid email"}'
-    cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s", (email,))
+    cursor.execute("SELECT password_hash, password_salt FROM users WHERE email = %s", (email,))
     rst = cursor.fetchone()
     if not rst:
         return '{"success":false, "message":"Email is not Verified"}'
     password_hash = rst[0].hex()
     password_salt = bytes.fromhex(rst[1].hex())
     password_hash_new = scrypt.hash(password, password_salt).hex()
-    role = rst[2]
     if password_hash == password_hash_new:
-        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1), 'role': role}, jwt_hs256_secret, algorithm='HS256')
+        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)}, jwt_hs256_secret, algorithm='HS256')
         logging.warning('User:\'' + str(email) + '\' logged in successfully')
-        return '{"access_token": "%s", "role":"%s"}\n' % (access_token.decode('utf-8'), role)
+        return '{"access_token": "%s"}\n' % (access_token.decode('utf-8'))
     logging.warning('User:\'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
     return '{"success":false, "message":"Incorrect Password"}'
 
-@app.route("/v1/registrations", methods=["POST"])
+@app.route("/v1/registration", methods=["POST"])
 def new_registration():
     email = request.form['email']
     password = request.form['password']
@@ -389,6 +389,37 @@ def sources():
     else:
         logging.warning('User:' + str(email_id) + ', Source content upload failed as files already exists.')
         return '{"success":false, "message":"No Changes. Existing source is already up-to-date."}'
+
+@app.route("/v1/languagelist", methods=["GET"])
+@check_token
+def languagelist():
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT picklelist FROM targetlanglist")
+    rst = cursor.fetchone()
+    if not rst:
+        return '{"success":false, "message":"No List available. Generate new list."}'
+    else:
+        db_item = pickle.loads(rst[0])
+        return json.dumps(db_item)
+
+@app.route("/v1/updatelanguagelist", methods=["GET"])
+@check_token
+def updatelanguagelist():
+    with urllib.request.urlopen("http://td.unfoldingword.org/exports/langnames.json") as url:
+        data = json.loads(url.read().decode())
+        tr ={}
+        for item in data:
+            if "IN" in item["cc"]:
+                tr[item["ang"]] = item["lc"]
+        db_item = pickle.dumps(tr)
+        connection = get_db()
+        cursor = connection.cursor()
+        cursor.execute("SELECT picklelist FROM targetlanglist")
+        cursor.execute("INSERT INTO targetlanglist (picklelist) VALUES (%s)", (db_item,))
+        cursor.close()
+        connection.commit()
+        return '{"success":true, "message":"Language List updated."}'
 
 @app.route("/v1/get_languages", methods=["POST"])
 @check_token
@@ -739,7 +770,7 @@ def upload_tokens_translation():
         tokenwords = open_workbook('tokn.xlsx')
     except:
         logging.warning('User:\'' + str(email_id) + '\'. Token translation upload failed. Invalid file format.')
-        return '{"success":false, "message":"Inlvalid file format. Upload correct format of xls/xlsx files."}'
+        return '{"success":false, "message":"Invalid file format. Upload correct format of xls/xlsx files."}'
     book = tokenwords
     p = book.sheet_by_index(0)
     count = 0
@@ -1111,6 +1142,7 @@ def translations():
                 out_final = re.sub(r'\n', r'\n\n', out_final)
                 out_final = re.sub(r'\'\s', r" '", out_final)
                 out_final = re.sub(r'\n\n', r'\n', out_final)
+                out_final = re.sub('>>>``<<<', '"', out_final)
                 out_final = re.sub(r'\\toc2', r'\\toc2 ', out_final)
                 out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
                 out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name), out_final)
