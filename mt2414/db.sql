@@ -122,3 +122,9 @@ CREATE TABLE translationtexts (
 	deleted_at timestamp with time zone,
 	source_id BIGINT REFERENCES sources(id) NOT NULL
 );
+
+CREATE TABLE targetlanglist (
+	id BIGSERIAL PRIMARY KEY,
+	picklelist BYTEA NOT NULL
+);
+
