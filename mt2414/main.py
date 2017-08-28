@@ -389,7 +389,7 @@ def sources():
         logging.warning('User:' + str(email_id) + ', Source content upload failed as files already exists.')
         return '{"success":false, "message":"No Changes. Existing source is already up-to-date."}'
 
-@app.route("/v1/getlanguages", methods=["POST"])        #-------------------------To find available language and version----------------------#
+@app.route("/v1/get_languages", methods=["POST"])        #-------------------------To find available language and version----------------------#
 @check_token
 def available_languages():
     connection = get_db()
@@ -406,7 +406,7 @@ def available_languages():
         cursor.close()
         return json.dumps(language_list)
 
-@app.route("/v1/getbooks", methods=["POST"])           #-------------------------To find available books and revision number----------------------#
+@app.route("/v1/get_books", methods=["POST"])           #-------------------------To find available books and revision number----------------------#
 @check_token
 def available_books():
     req = request.get_json(True)
@@ -516,7 +516,7 @@ def book():
         cursor.close()
         return json.dumps(list(book_list))
 
-@app.route("/v1/downloadtokens", methods=["POST", "GET"])      #--------------To download tokenwords in an Excel file (bookwise)---------------#
+@app.route("/v1/getbookwiseautotokens", methods=["POST", "GET"])      #--------------To download tokenwords in an Excel file (bookwise)---------------#
 @check_token
 def bookwiseagt():
     req = request.get_json(True)
