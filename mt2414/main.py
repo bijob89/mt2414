@@ -20,6 +20,7 @@ import ast
 import flask
 import pyexcel
 import logging
+import pyotp
 
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -48,7 +49,7 @@ postgres_user = os.environ.get("MT2414_POSTGRES_USER", "postgres")
 postgres_password = os.environ.get("MT2414_POSTGRES_PASSWORD", "secret")
 postgres_database = os.environ.get("MT2414_POSTGRES_DATABASE", "postgres")
 
-def get_db():
+def get_db():                                                                      #--------------To open database connection-------------------#
     """Opens a new database connection if there is none yet for the
     current application context.
     """
@@ -56,13 +57,13 @@ def get_db():
         g.db = psycopg2.connect(dbname=postgres_database, user=postgres_user, password=postgres_password, host=postgres_host, port=postgres_port)
     return g.db
 
-@app.teardown_appcontext
+@app.teardown_appcontext                                              #-----------------Close database connection----------------#
 def close_db(error):
     """Closes the database again at the end of the request."""
     if hasattr(g, 'db'):
         g.db.close()
 
-@app.route("/v1/auth", methods=["POST"])
+@app.route("/v1/auth", methods=["POST"])                    #-------------------For login---------------------#
 def auth():
     email = request.form["username"]
     password = request.form["password"]
@@ -88,7 +89,7 @@ def auth():
     logging.warning('User \'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
     return '{"success":false, "message":"Incorrect Password"}'
 
-@app.route("/v1/registrations", methods=["POST"])
+@app.route("/v1/registrations", methods=["POST"])       #-----------------For user registrations-----------------#
 def new_registration():
     email = request.form['email']
     password = request.form['password']
@@ -121,7 +122,7 @@ def new_registration():
     else:
         return '{"success":false, "message":"Email Already Exists"}'
 
-@app.route("/v1/resetpassword", methods=["POST"])
+@app.route("/v1/resetpassword", methods=["POST"])    #-----------------For resetting the password------------------#                SET OTP IN BOLD
 def reset_password():
     email = request.form['email']
     connection = get_db()
@@ -132,7 +133,9 @@ def reset_password():
     else:
         headers = {"api-key": sendinblue_key}
         url = "https://api.sendinblue.com/v2.0/email"
-        verification_code = str(uuid.uuid4()).replace("-", "")
+        totp = pyotp.TOTP('base32secret3232')       # python otp module
+        verification_code = totp.now()
+        # verification_code = str(uuid.uuid4()).replace("-", "")
         body = '''Hi,<br/><br/>your request for resetting the password has been recieved. <br/>
         Your temporary password is %s. Enter your new password by opening this link:
 
@@ -151,7 +154,7 @@ def reset_password():
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
         return '{"success":true, "message":"Link to reset password has been sent to the registered mail ID"}\n'
 
-@app.route("/v1/forgotpassword", methods=["POST"])
+@app.route("/v1/forgotpassword", methods=["POST"])    #--------------To set the new password-------------------#
 def reset_password2():
     temp_password = request.form['temp_password']
     password = request.form['password']
@@ -264,7 +267,7 @@ def new_registration2(code):
     connection.commit()
     return redirect("http://autographamt.com/")
 
-@app.route("/v1/createsources", methods=["POST"])
+@app.route("/v1/createsources", methods=["POST"])                     #--------------For creating new source (admin) -------------------#
 @check_token
 def create_sources():
     req = request.get_json(True)
@@ -301,9 +304,9 @@ def tokenise(content):
     remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])', '', content)
     token_list = nltk.word_tokenize(remove_punct)
     token_set = set([x.encode('utf-8') for x in token_list])
-    return token_set
+    return token_set                        #--------------To generate tokens -------------------#
 
-@app.route("/v1/sourceid", methods=["POST"])
+@app.route("/v1/sourceid", methods=["POST"])      #--------------For return source_id -------------------#
 @check_token
 def sourceid():
     req = request.get_json(True)
@@ -318,7 +321,7 @@ def sourceid():
         source_id = rst[0]
         return str(source_id)
 
-@app.route("/v1/sources", methods=["POST"])
+@app.route("/v1/sources", methods=["POST"])           #--------------To upload source file in database, generate bookwise token and save the tokens in database-------------------#
 @check_token
 def sources():
     files = request.files['content']
@@ -386,7 +389,7 @@ def sources():
         logging.warning('User:' + str(email_id) + ', Source content upload failed as files already exists.')
         return '{"success":false, "message":"No Changes. Existing source is already up-to-date."}'
 
-@app.route("/v1/get_languages", methods=["POST"])        #-------------------------To find available language and version----------------------#
+@app.route("/v1/getlanguages", methods=["POST"])        #-------------------------To find available language and version----------------------#
 @check_token
 def available_languages():
     connection = get_db()
@@ -403,7 +406,7 @@ def available_languages():
         cursor.close()
         return json.dumps(language_list)
 
-@app.route("/v1/get_books", methods=["POST"])           #-------------------------To find available books and revision number----------------------#
+@app.route("/v1/getbooks", methods=["POST"])           #-------------------------To find available books and revision number----------------------#
 @check_token
 def available_books():
     req = request.get_json(True)
@@ -513,7 +516,7 @@ def book():
         cursor.close()
         return json.dumps(list(book_list))
 
-@app.route("/v1/getbookwiseautotokens", methods=["POST", "GET"])                    #-------------------------To download tokenwords in an Excel file (bookwise)-----------------------#
+@app.route("/v1/downloadtokens", methods=["POST", "GET"])      #--------------To download tokenwords in an Excel file (bookwise)---------------#
 @check_token
 def bookwiseagt():
     req = request.get_json(True)
@@ -626,7 +629,7 @@ def autotokens():
         cursor.close()
         return json.dumps(tr)
 
-@app.route("/v1/tokenlist", methods=["POST", "GET"])                      #-------------------------To download remaining tokenwords in an Excel file (bookwise)-----------------------#
+@app.route("/v1/tokenlist", methods=["POST", "GET"])               #------------------To download remaining tokenwords in an Excel file (bookwise)---------------#
 @check_token
 def tokenlist():
     req = request.get_json(True)
@@ -673,7 +676,7 @@ def tokenlist():
             output.headers["Content-type"] = "xlsx"
             return output
 
-@app.route("/v1/tokencount", methods=["POST"])                  #-------------------------To check total_token count (bookwise)-----------------------#
+@app.route("/v1/tokencount", methods=["POST"])                       #----------------To check total_token count (bookwise)-----------------#
 @check_token
 def tokencount():
     req = request.get_json(True)
@@ -712,7 +715,7 @@ def tokencount():
             cursor.close()
             return json.dumps(result)
 
-@app.route("/v1/uploadtokentranslation", methods=["POST"])                #-------------------------To upload token translation to database (excel file)-----------------------#
+@app.route("/v1/uploadtokentranslation", methods=["POST"])    #-------------To upload token translation to database (excel file)--------------#
 @check_token
 def upload_tokens_translation():
     language = request.form["language"]
@@ -778,7 +781,7 @@ def upload_tokens_translation():
     else:
         return '{"success":false, "message":"Tokens have no translation"}'
 
-@app.route("/v1/updatetokentranslation", methods=["POST"])                     #-------------------------To update token translation (only for admin)-----------------------#
+@app.route("/v1/updatetokentranslation", methods=["POST"])     #-------------To update token translation (only for admin)-----------------#
 @check_token
 def update_tokens_translation():
     language = request.form["language"]
@@ -866,7 +869,7 @@ def update_tokens_translation():
     else:
         raise TokenError('Invalid header', 'Access token required')
 
-@app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])                      
+@app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])    #-------------To upload tagged token translation-----------------#                 NOT COMPLETED
 @check_token
 def upload_taggedtokens_translation():
     req = request.get_json(True)
@@ -947,7 +950,7 @@ def super_admin_approval():
             return '{"success":false, "message":"You are not authorized to edit this page. Contact Administrator"}'
     return '{}\n'
 
-@app.route("/v1/generateconcordance", methods=["POST"])
+@app.route("/v1/generateconcordance", methods=["POST","GET"])       #-----------------To generate concordance-------------------#
 @check_token
 def generate_concordance():
     req = request.get_json(True)
@@ -1004,7 +1007,7 @@ def generate_concordance():
         else:
             return '{"success":false, "message":"No changes made. Concordances are already up-to-date"}'
 
-@app.route("/v1/getconcordance", methods=["POST"])
+@app.route("/v1/getconcordance", methods=["POST","GET"])               #-----------------To download concordance-------------------#
 @check_token
 def get_concordance():
     req = request.get_json(True)
@@ -1031,7 +1034,7 @@ def get_concordance():
         cursor.close()
         return json.dumps(con)
 
-@app.route("/v1/translations", methods=["POST"])
+@app.route("/v1/translations", methods=["POST"])                   #---------------To download translation draft-------------------#
 @check_token
 def translations():
     req = request.get_json(True)
