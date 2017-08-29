@@ -1,6 +1,6 @@
 import os
 import uuid
-import urllib.request, json
+import urllib.request
 import psycopg2
 from functools import wraps
 from datetime import datetime, timedelta
@@ -123,7 +123,7 @@ def new_registration():
     else:
         return '{"success":false, "message":"Email Already Exists"}'
 
-@app.route("/v1/resetpassword", methods=["POST"])    #-----------------For resetting the password------------------#              
+@app.route("/v1/resetpassword", methods=["POST"])    #-----------------For resetting the password------------------#
 def reset_password():
     email = request.form['email']
     connection = get_db()
@@ -300,11 +300,11 @@ def create_sources():
         else:
             return '{"success":false, "message":"You don\'t have permission to access this page"}'
 
-def tokenise(content):
+def tokenise(content):                                                  #--------------To generate tokens -------------------#
     remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])', '', content)
     token_list = nltk.word_tokenize(remove_punct)
     token_set = set([x.encode('utf-8') for x in token_list])
-    return token_set                        #--------------To generate tokens -------------------#
+    return token_set
 
 @app.route("/v1/sourceid", methods=["POST"])      #--------------For return source_id -------------------#
 @check_token
@@ -393,7 +393,7 @@ def sources():
         logging.warning('User:' + str(email_id) + ', Source content upload failed as files already exists.')
         return '{"success":false, "message":"No Changes. Existing source is already up-to-date."}'
 
-@app.route("/v1/languagelist", methods=["GET"])
+@app.route("/v1/languagelist", methods=["GET"])       #--------------To fetch the list of languages from the database -------------------#
 @check_token
 def languagelist():
     connection = get_db()
@@ -406,7 +406,7 @@ def languagelist():
         db_item = pickle.loads(rst[0])
         return json.dumps(db_item)
 
-@app.route("/v1/updatelanguagelist", methods=["GET"])
+@app.route("/v1/updatelanguagelist", methods=["GET"])                #--------------To update the database with languages from unfoldingword.org------------------#
 @check_token
 def updatelanguagelist():
     with urllib.request.urlopen("http://td.unfoldingword.org/exports/langnames.json") as url:
@@ -460,7 +460,7 @@ def available_books():
         cursor.close()
         return json.dumps(book_list)
 
-@app.route("/v1/language", methods=["POST"])                 #-------------------------To find available languages----------------------#
+@app.route("/v1/language", methods=["POST"])                 #-------------------------To find available source language list----------------------#
 @check_token
 def language():
     connection = get_db()
