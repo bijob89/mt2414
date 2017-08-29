@@ -135,7 +135,6 @@ def reset_password():
         url = "https://api.sendinblue.com/v2.0/email"
         totp = pyotp.TOTP('base32secret3232')       # python otp module
         verification_code = totp.now()
-        # verification_code = str(uuid.uuid4()).replace("-", "")
         body = '''Hi,<br/><br/>your request for resetting the password has been recieved. <br/>
         Your temporary password is %s. Enter your new password by opening this link:
 
@@ -871,7 +870,7 @@ def update_tokens_translation():
     else:
         raise TokenError('Invalid header', 'Access token required')
 
-@app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])    #-------------To upload tagged token translation-----------------#                 NOT COMPLETED
+@app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])    #-------------To upload tagged token translation-----------------#          
 @check_token
 def upload_taggedtokens_translation():
     req = request.get_json(True)
