@@ -445,10 +445,12 @@ def language():
 @check_token
 def targetlang():
     req = request.get_json(True)
-    language = req["language"]
+    language =req["language"]
+    version = req["version"]
+    revision = req["revision"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT targetlang FROM autotokentranslations at LEFT JOIN sources s ON at.source_id = s.id WHERE s.language = %s", (language,))
+    cursor.execute("SELECT at.targetlang FROM autotokentranslations at LEFT JOIN sources s ON at.source_id = s.id WHERE s.language = %s AND s.version = %s AND at.revision_num = %s", (language, version, revision))
     targetlang = cursor.fetchall()
     targetlang_list = set()
     if not targetlang:
