@@ -20,6 +20,7 @@ import ast
 import flask
 import pyexcel
 import logging
+import pyotp
 
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -48,7 +49,7 @@ postgres_user = os.environ.get("MT2414_POSTGRES_USER", "postgres")
 postgres_password = os.environ.get("MT2414_POSTGRES_PASSWORD", "secret")
 postgres_database = os.environ.get("MT2414_POSTGRES_DATABASE", "postgres")
 
-def get_db():
+def get_db():                                                                      #--------------To open database connection-------------------#
     """Opens a new database connection if there is none yet for the
     current application context.
     """
@@ -56,13 +57,13 @@ def get_db():
         g.db = psycopg2.connect(dbname=postgres_database, user=postgres_user, password=postgres_password, host=postgres_host, port=postgres_port)
     return g.db
 
-@app.teardown_appcontext
+@app.teardown_appcontext                                              #-----------------Close database connection----------------#
 def close_db(error):
     """Closes the database again at the end of the request."""
     if hasattr(g, 'db'):
         g.db.close()
 
-@app.route("/v1/auth", methods=["POST"])
+@app.route("/v1/auth", methods=["POST"])                    #-------------------For login---------------------#
 def auth():
     email = request.form["username"]
     password = request.form["password"]
@@ -88,7 +89,7 @@ def auth():
     logging.warning('User \'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
     return '{"success":false, "message":"Incorrect Password"}'
 
-@app.route("/v1/registrations", methods=["POST"])
+@app.route("/v1/registrations", methods=["POST"])       #-----------------For user registrations-----------------#
 def new_registration():
     email = request.form['email']
     password = request.form['password']
@@ -121,7 +122,7 @@ def new_registration():
     else:
         return '{"success":false, "message":"Email Already Exists"}'
 
-@app.route("/v1/resetpassword", methods=["POST"])
+@app.route("/v1/resetpassword", methods=["POST"])    #-----------------For resetting the password------------------#              
 def reset_password():
     email = request.form['email']
     connection = get_db()
@@ -132,7 +133,8 @@ def reset_password():
     else:
         headers = {"api-key": sendinblue_key}
         url = "https://api.sendinblue.com/v2.0/email"
-        verification_code = str(uuid.uuid4()).replace("-", "")
+        totp = pyotp.TOTP('base32secret3232')       # python otp module
+        verification_code = totp.now()
         body = '''Hi,<br/><br/>your request for resetting the password has been recieved. <br/>
         Your temporary password is %s. Enter your new password by opening this link:
 
@@ -151,7 +153,7 @@ def reset_password():
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
         return '{"success":true, "message":"Link to reset password has been sent to the registered mail ID"}\n'
 
-@app.route("/v1/forgotpassword", methods=["POST"])
+@app.route("/v1/forgotpassword", methods=["POST"])    #--------------To set the new password-------------------#
 def reset_password2():
     temp_password = request.form['temp_password']
     password = request.form['password']
@@ -264,7 +266,7 @@ def new_registration2(code):
     connection.commit()
     return redirect("http://autographamt.com/")
 
-@app.route("/v1/createsources", methods=["POST"])
+@app.route("/v1/createsources", methods=["POST"])                     #--------------For creating new source (admin) -------------------#
 @check_token
 def create_sources():
     req = request.get_json(True)
@@ -301,9 +303,9 @@ def tokenise(content):
     remove_punct = re.sub(r'([!"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789cvpsSAQqCHPETIidmJNa])', '', content)
     token_list = nltk.word_tokenize(remove_punct)
     token_set = set([x.encode('utf-8') for x in token_list])
-    return token_set
+    return token_set                        #--------------To generate tokens -------------------#
 
-@app.route("/v1/sourceid", methods=["POST"])
+@app.route("/v1/sourceid", methods=["POST"])      #--------------For return source_id -------------------#
 @check_token
 def sourceid():
     req = request.get_json(True)
@@ -318,11 +320,11 @@ def sourceid():
         source_id = rst[0]
         return str(source_id)
 
-@app.route("/v1/sources", methods=["POST"])
+@app.route("/v1/sources", methods=["POST"])           #--------------To upload source file in database, generate bookwise token and save the tokens in database-------------------#
 @check_token
 def sources():
-    content = request.files['content']
-    fname = content.read()
+    files = request.files['content']
+    read_file = files.read()
     source_id = request.form["source_id"]
     auth = request.headers.get('Authorization', None)
     parts = auth.split()
@@ -346,9 +348,9 @@ def sources():
             all_books = cursor.fetchall()
             for i in range(0, len(all_books)):
                 books.append(all_books[i][0])
-            nxl = (fname.decode('utf-8').replace('\r', ''))
-            book_name = (re.search('(?<=\id )\w{3}', nxl)).group(0)
-            text_file = re.sub(r'(\n\\rem.*)', '', nxl)
+            convert_file = (read_file.decode('utf-8').replace('\r', ''))
+            book_name = (re.search('(?<=\id )\w{3}', convert_file)).group(0)
+            text_file = re.sub(r'(\n\\rem.*)', '', convert_file)
             text_file = re.sub('(\\\\id .*)', '\\id ' + str(book_name), text_file)
             if book_name in books:
                 count = 0
@@ -386,43 +388,43 @@ def sources():
         logging.warning('User:' + str(email_id) + ', Source content upload failed as files already exists.')
         return '{"success":false, "message":"No Changes. Existing source is already up-to-date."}'
 
-@app.route("/v1/get_languages", methods=["POST"])
+@app.route("/v1/get_languages", methods=["POST"])        #-------------------------To find available language and version----------------------#
 @check_token
-def availableslan():
+def available_languages():
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT s.language, s.version FROM sources s  LEFT JOIN sourcetexts st ON st.source_id = s.id")
-    books = set()
-    language = cursor.fetchall()
-    if not language:
+    rst = cursor.fetchall()
+    languages = set()
+    if not rst:
         return '{"success":false, "message":"No sources"}'
     else:
-        for rst in range(0, len(language)):
-            books.add(language[rst])
-        mylist = list(books)
+        for lan in range(0, len(rst)):
+            languages.add(rst[lan])
+        language_list = list(languages)
         cursor.close()
-        return json.dumps(mylist)
+        return json.dumps(language_list)
 
-@app.route("/v1/get_books", methods=["POST"])
+@app.route("/v1/get_books", methods=["POST"])           #-------------------------To find available books and revision number----------------------#
 @check_token
-def availablesbooks():
+def available_books():
     req = request.get_json(True)
     language = req["language"]
     version = req["version"]
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT st.book_name, st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s", (language, version))
-    al = cursor.fetchall()
-    books = []
-    if not al:
+    rst = cursor.fetchall()
+    book_list = []
+    if not rst:
         return '{"success":false, "message":"No books available"}'
     else:
-        for rst in range(0, len(al)):
-            books.append(al[rst])
+        for book in range(0, len(rst)):
+            book_list.append(rst[book])
         cursor.close()
-        return json.dumps(books)
+        return json.dumps(book_list)
 
-@app.route("/v1/language", methods=["POST"])
+@app.route("/v1/language", methods=["POST"])                 #-------------------------To find available languages----------------------#
 @check_token
 def language():
     connection = get_db()
@@ -438,14 +440,16 @@ def language():
         cursor.close()
         return json.dumps(list(language_list))
 
-@app.route("/v1/targetlang", methods=["POST"])
+@app.route("/v1/targetlang", methods=["POST"])                       #-------------------------To find available target_language list----------------------#
 @check_token
 def targetlang():
     req = request.get_json(True)
-    language = req["language"]
+    language =req["language"]
+    version = req["version"]
+    revision = req["revision"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT targetlang FROM autotokentranslations at LEFT JOIN sources s ON at.source_id = s.id WHERE s.language = %s", (language,))
+    cursor.execute("SELECT at.targetlang FROM autotokentranslations at LEFT JOIN sources s ON at.source_id = s.id WHERE s.language = %s AND s.version = %s AND at.revision_num = %s", (language, version, revision))
     targetlang = cursor.fetchall()
     targetlang_list = set()
     if not targetlang:
@@ -456,7 +460,7 @@ def targetlang():
         cursor.close()
         return json.dumps(list(targetlang_list))
 
-@app.route("/v1/version", methods=["POST"])
+@app.route("/v1/version", methods=["POST"])                       #-------------------------To find available versions----------------------#
 @check_token
 def version():
     req = request.get_json(True)
@@ -474,7 +478,7 @@ def version():
         cursor.close()
         return json.dumps(list(version_list))
 
-@app.route("/v1/revision", methods=["POST"])
+@app.route("/v1/revision", methods=["POST"])                            #-------------------------To find revision number----------------------#
 @check_token
 def revision():
     req = request.get_json(True)
@@ -493,7 +497,7 @@ def revision():
         cursor.close()
         return json.dumps(list(set(revision_list)))
 
-@app.route("/v1/book", methods=["POST"])
+@app.route("/v1/book", methods=["POST"])                          #-------------------------To find available books----------------------#
 @check_token
 def book():
     req = request.get_json(True)
@@ -513,7 +517,7 @@ def book():
         cursor.close()
         return json.dumps(list(book_list))
 
-@app.route("/v1/getbookwiseautotokens", methods=["POST", "GET"])
+@app.route("/v1/getbookwiseautotokens", methods=["POST", "GET"])      #--------------To download tokenwords in an Excel file (bookwise)---------------#
 @check_token
 def bookwiseagt():
     req = request.get_json(True)
@@ -536,31 +540,30 @@ def bookwiseagt():
         elif not include_books and exclude_books:
             return '{"success":false, "message":"Select any books from include books"}'
 
-        toknwords = []
-        ntoknwords = []
-        availablelan = []
+        book_name = []
         cursor.execute("SELECT book_name FROM cluster WHERE source_id =%s AND revision_num = %s", (source_id[0], revision))
-        avlbk = cursor.fetchall()
-        for i in avlbk:
-            availablelan.append(i[0])
-        b = set(include_books) - set(availablelan)
-        c = set(exclude_books) - set(availablelan)
-        translatedtokenlist = []
+        rst = cursor.fetchall()
+        for bkn in rst:
+            book_name.append(bkn[0])
+        b = set(include_books) - set(book_name)                 # to check include_books in book_name (book_name contains books that fetch from database)
+        c = set(exclude_books) - set(book_name)                 # to check exclude_books in book_name (book_name contains books that fetch from database)
+        translated_tokens = []
         cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s", (revision, targetlang, source_id[0]))
-        translatedtoken = cursor.fetchall()
-        for tk in translatedtoken:
-            translatedtokenlist.append(tk[0])
+        rst1 = cursor.fetchall()
+        for tk in rst1:
+            translated_tokens.append(tk[0])
+        token_list = []
         if not b and not c:
             if include_books and not exclude_books:
                 for bkn in include_books:
                     cursor.execute("SELECT token FROM cluster WHERE source_id =%s AND revision_num = %s AND book_name = %s", (source_id[0], revision, bkn,))
                     tokens = cursor.fetchall()
                     for t in tokens:
-                        toknwords.append(t[0])
-                stoknwords = set(toknwords)
+                        token_list.append(t[0])
+                token_set = set(token_list) - set(translated_tokens)
                 cursor.close()
                 result = [['TOKEN', 'TRANSLATION']]
-                for i in list(stoknwords):
+                for i in list(token_set):
                     result.append([i])
                 sheet = pyexcel.Sheet(result)
                 output = flask.make_response(sheet.xlsx)
@@ -573,17 +576,18 @@ def bookwiseagt():
                     cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s AND book_name = %s", (source_id[0], revision, bkn,))
                     tokens = cursor.fetchall()
                     for t in tokens:
-                        toknwords.append(t[0])
-                for nbkn in exclude_books:
-                    cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s AND book_name = %s", (source_id[0], revision, nbkn,))
+                        token_list.append(t[0])
+                exclude_tokens = []
+                for bkn in exclude_books:
+                    cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s AND book_name = %s", (source_id[0], revision, bkn,))
                     ntokens = cursor.fetchall()
                     for t in ntokens:
-                        ntoknwords.append(t[0])
-                stoknwords = set(toknwords) - set(ntoknwords)
-                output = stoknwords - set(translatedtokenlist)
+                        exclude_tokens.append(t[0])
+                set_toknwords = set(token_list) - set(exclude_tokens)
+                output = set(set_toknwords) - set(translated_tokens)
                 cursor.close()
                 result = [['TOKEN', 'TRANSLATION']]
-                for i in list(stoknwords):
+                for i in list(output):
                     result.append([i])
                 sheet = pyexcel.Sheet(result)
                 output = flask.make_response(sheet.xlsx)
@@ -626,7 +630,7 @@ def autotokens():
         cursor.close()
         return json.dumps(tr)
 
-@app.route("/v1/tokenlist", methods=["POST", "GET"])
+@app.route("/v1/tokenlist", methods=["POST", "GET"])               #------------------To download remaining tokenwords in an Excel file (bookwise)---------------#
 @check_token
 def tokenlist():
     req = request.get_json(True)
@@ -673,7 +677,7 @@ def tokenlist():
             output.headers["Content-type"] = "xlsx"
             return output
 
-@app.route("/v1/tokencount", methods=["POST"])
+@app.route("/v1/tokencount", methods=["POST"])                       #----------------To check total_token count (bookwise)-----------------#
 @check_token
 def tokencount():
     req = request.get_json(True)
@@ -712,7 +716,7 @@ def tokencount():
             cursor.close()
             return json.dumps(result)
 
-@app.route("/v1/uploadtokentranslation", methods=["POST"])
+@app.route("/v1/uploadtokentranslation", methods=["POST"])    #-------------To upload token translation to database (excel file)--------------#
 @check_token
 def upload_tokens_translation():
     language = request.form["language"]
@@ -749,12 +753,11 @@ def upload_tokens_translation():
             token_list = []
             for i in transtokens:
                 token_list.append(i[0])
-            for k, v in dic.items():
+            for k, v in dic.items():             # key(k) and value(v)
                 if v:
                     if k not in token_list:
                         cursor.execute("INSERT INTO autotokentranslations (token, translated_token, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (k, v, targetlang, revision, source_id[0]))
                         changes.append(v)
-                    # cursor.execute("UPDATE autotokentranslations SET translated_token = %s WHERE token = %s AND source_id = %s AND targetlang = %s AND revision_num = %s", (v, k, source_id[0], targetlang, revision))
             cursor.close()
             connection.commit()
             filename = "tokn.xlsx"
@@ -779,7 +782,7 @@ def upload_tokens_translation():
     else:
         return '{"success":false, "message":"Tokens have no translation"}'
 
-@app.route("/v1/updatetokentranslation", methods=["POST"])
+@app.route("/v1/updatetokentranslation", methods=["POST"])     #-------------To update token translation (only for admin)-----------------#
 @check_token
 def update_tokens_translation():
     language = request.form["language"]
@@ -822,7 +825,7 @@ def update_tokens_translation():
             if count > 1:
                 token_c = (token_c.value for token_c in p.col(0, 1))
                 tran = (tran.value for tran in p.col(1, 1))
-                data = dict(zip(token_c, tran))
+                data = dict(zip(token_c, tran))             # coverting into dict format
                 dic = ast.literal_eval(json.dumps(data))
                 cursor.execute("SELECT token FROM autotokentranslations WHERE source_id = %s AND revision_num = %s AND targetlang = %s", (source_id[0], revision, targetlang))
                 transtokens = cursor.fetchall()
@@ -867,7 +870,7 @@ def update_tokens_translation():
     else:
         raise TokenError('Invalid header', 'Access token required')
 
-@app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])
+@app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])    #-------------To upload tagged token translation-----------------#
 @check_token
 def upload_taggedtokens_translation():
     req = request.get_json(True)
@@ -948,7 +951,7 @@ def super_admin_approval():
             return '{"success":false, "message":"You are not authorized to edit this page. Contact Administrator"}'
     return '{}\n'
 
-@app.route("/v1/generateconcordance", methods=["POST"])
+@app.route("/v1/generateconcordance", methods=["POST","GET"])       #-----------------To generate concordance-------------------#
 @check_token
 def generate_concordance():
     req = request.get_json(True)
@@ -1005,7 +1008,7 @@ def generate_concordance():
         else:
             return '{"success":false, "message":"No changes made. Concordances are already up-to-date"}'
 
-@app.route("/v1/getconcordance", methods=["POST"])
+@app.route("/v1/getconcordance", methods=["POST","GET"])               #-----------------To download concordance-------------------#
 @check_token
 def get_concordance():
     req = request.get_json(True)
@@ -1032,7 +1035,7 @@ def get_concordance():
         cursor.close()
         return json.dumps(con)
 
-@app.route("/v1/translations", methods=["POST"])
+@app.route("/v1/translations", methods=["POST"])                   #---------------To download translation draft-------------------#
 @check_token
 def translations():
     req = request.get_json(True)
