@@ -122,7 +122,7 @@ def new_registration():
     else:
         return '{"success":false, "message":"Email Already Exists"}'
 
-@app.route("/v1/resetpassword", methods=["POST"])    #-----------------For resetting the password------------------#                SET OTP IN BOLD
+@app.route("/v1/resetpassword", methods=["POST"])    #-----------------For resetting the password------------------#              
 def reset_password():
     email = request.form['email']
     connection = get_db()
@@ -870,7 +870,7 @@ def update_tokens_translation():
     else:
         raise TokenError('Invalid header', 'Access token required')
 
-@app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])    #-------------To upload tagged token translation-----------------#          
+@app.route("/v1/uploadtaggedtokentranslation", methods=["POST"])    #-------------To upload tagged token translation-----------------#
 @check_token
 def upload_taggedtokens_translation():
     req = request.get_json(True)
