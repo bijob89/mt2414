@@ -154,7 +154,7 @@ def reset_password():
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
         return '{"success":true, "message":"Link to reset password has been sent to the registered mail ID"}\n'
 
-@app.route("/v1/forgotpassword", methods=["POST","GET"])    #--------------To set the new password-------------------#
+@app.route("/v1/forgotpassword", methods=["POST"])    #--------------To set the new password-------------------#
 def reset_password2():
     temp_password = request.form['temp_password']
     password = request.form['password']
