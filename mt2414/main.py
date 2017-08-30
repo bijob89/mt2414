@@ -341,6 +341,8 @@ def sources():
         decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
         user_role = decoded['role']
         if user_role == 'admin' or user_role == 'superadmin':
+            if not source_id:
+                return '{"success":false, "message":"Select language and version"}'
             connection = get_db()
             cursor = connection.cursor()
             changes = []
@@ -688,30 +690,31 @@ def tokenlist():
         not_trantoken = cursor.fetchall()
         if not translated_token:
             return '{"success":false, "message":"Translated tokens are not available. Upload token translation ."}'
-        else:
-            token = []
-            for tk in translated_token:
-                token.append(tk[0])
-            nottranslated = []
-            for nt in not_trantoken:
-                nottranslated.append(nt[0])
-            token_list = []
-            for bk in book_list:
-                cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk))
-                cluster_token = cursor. fetchall()
-                for ct in cluster_token:
-                    token_list.append(ct[0])
-            output1 = set(token_list) - set(token)
-            output2 = set(token_list) & set(not_trantoken)
-            output = set(output1) | set(output2)
-            result = [['TOKEN', 'TRANSLATION']]
-            for i in list(output):
-                result.append([i])
-            sheet = pyexcel.Sheet(result)
-            output = flask.make_response(sheet.xlsx)
-            output.headers["Content-Disposition"] = "attachment; filename=%s.xlsx" % (bk)
-            output.headers["Content-type"] = "xlsx"
-            return output
+        elif not not_trantoken:
+            return '{"success":false, "message":"No remaining tokens."}'
+        token = []
+        for tk in translated_token:
+            token.append(tk[0])
+        nottranslated = []
+        for nt in not_trantoken:
+            nottranslated.append(nt[0])
+        token_list = []
+        for bk in book_list:
+            cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk))
+            cluster_token = cursor. fetchall()
+            for ct in cluster_token:
+                token_list.append(ct[0])
+        output1 = set(token_list) - set(token)
+        output2 = set(token_list) & set(not_trantoken)
+        output = set(output1) | set(output2)
+        result = [['TOKEN', 'TRANSLATION']]
+        for i in list(output):
+            result.append([i])
+        sheet = pyexcel.Sheet(result)
+        output = flask.make_response(sheet.xlsx)
+        output.headers["Content-Disposition"] = "attachment; filename=%s.xlsx" % (bk)
+        output.headers["Content-type"] = "xlsx"
+        return output
 
 @app.route("/v1/tokencount", methods=["POST"])                       #----------------To check total_token count (bookwise)-----------------#
 @check_token
