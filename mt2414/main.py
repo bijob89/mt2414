@@ -100,7 +100,7 @@ def new_registration():
     body = '''Hi,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
     You need to confirm your email by opening this link:
 
-    <a href="https://autographamt.com/v1/verifications/%s">https://autographamt.com/v1/verifications/%s</a>
+    <a href="https://api.mt2414.in/v1/verifications/%s">https://api.mt2414.in/v1/verifications/%s</a>
 
     <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code, verification_code)
     payload = {
