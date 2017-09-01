@@ -105,7 +105,7 @@ def new_registration():
     <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code, verification_code)
     payload = {
         "to": {email: ""},
-        "from": ["noreply@autographamt.in", "Mt. 24:14"],
+        "from": ["noreply@autographamt.in", "Autographa MT"],
         "subject": "AutographaMT - Please verify your email address",
         "html": body,
         }
