@@ -97,16 +97,16 @@ def new_registration():
     headers = {"api-key": sendinblue_key}
     url = "https://api.sendinblue.com/v2.0/email"
     verification_code = str(uuid.uuid4()).replace("-", "")
-    body = '''Hi,<br/><br/>Thanks for your interest to use the MT2414 web service. <br/>
+    body = '''Hi,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
     You need to confirm your email by opening this link:
 
-    <a href="https://api.mt2414.in/v1/verifications/%s">https://api.mt2414.in/v1/verifications/%s</a>
+    <a href="https://autographamt.com/v1/verifications/%s">https://autographamt.com/v1/verifications/%s</a>
 
     <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code, verification_code)
     payload = {
         "to": {email: ""},
-        "from": ["noreply@mt2414.in", "Mt. 24:14"],
-        "subject": "MT2414 - Please verify your email address",
+        "from": ["noreply@autographamt.in", "Mt. 24:14"],
+        "subject": "AutographaMT - Please verify your email address",
         "html": body,
         }
     connection = get_db()
@@ -413,7 +413,7 @@ def languagelist():
 def updatelanguagelist():
     with urllib.request.urlopen("http://td.unfoldingword.org/exports/langnames.json") as url:
         data = json.loads(url.read().decode())
-        tr ={}
+        tr = {}
         for item in data:
             if "IN" in item["cc"]:
                 tr[item["ang"]] = item["lc"]
@@ -482,7 +482,7 @@ def language():
 @check_token
 def targetlang():
     req = request.get_json(True)
-    language =req["language"]
+    language = req["language"]
     version = req["version"]
     revision = req["revision"]
     connection = get_db()
@@ -686,27 +686,20 @@ def tokenlist():
     else:
         cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NOT NULL AND revision_num = %s AND targetlang = %s AND source_id = %s", (revision, targetlang, source_id[0]))
         translated_token = cursor.fetchall()
-        cursor.execute("SELECT  token FROM autotokentranslations WHERE translated_token IS NULL AND revision_num = %s AND targetlang = %s AND source_id = %s", (revision, targetlang, source_id[0]))
-        not_trantoken = cursor.fetchall()
         if not translated_token:
             return '{"success":false, "message":"Translated tokens are not available. Upload token translation ."}'
-        elif not not_trantoken:
-            return '{"success":false, "message":"No remaining tokens."}'
         token = []
         for tk in translated_token:
             token.append(tk[0])
-        nottranslated = []
-        for nt in not_trantoken:
-            nottranslated.append(nt[0])
         token_list = []
         for bk in book_list:
             cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk))
             cluster_token = cursor. fetchall()
             for ct in cluster_token:
                 token_list.append(ct[0])
-        output1 = set(token_list) - set(token)
-        output2 = set(token_list) & set(not_trantoken)
-        output = set(output1) | set(output2)
+        output = set(token_list) - set(token)
+        if not list(output):
+            return '{"success":false, "message":"No remaining tokens."}'
         result = [['TOKEN', 'TRANSLATION']]
         for i in list(output):
             result.append([i])
@@ -995,7 +988,7 @@ def super_admin_approval():
             return '{"success":false, "message":"You are not authorized to edit this page. Contact Administrator"}'
     return '{}\n'
 
-@app.route("/v1/generateconcordance", methods=["POST","GET"])       #-----------------To generate concordance-------------------#
+@app.route("/v1/generateconcordance", methods=["POST", "GET"])       #-----------------To generate concordance-------------------#
 @check_token
 def generate_concordance():
     req = request.get_json(True)
@@ -1052,7 +1045,7 @@ def generate_concordance():
         else:
             return '{"success":false, "message":"No changes made. Concordances are already up-to-date"}'
 
-@app.route("/v1/getconcordance", methods=["POST","GET"])               #-----------------To download concordance-------------------#
+@app.route("/v1/getconcordance", methods=["POST", "GET"])               #-----------------To download concordance-------------------#
 @check_token
 def get_concordance():
     req = request.get_json(True)
