@@ -1083,6 +1083,7 @@ def translations():
     changes = []
     changes1 = []
     if len(books) == 0:
+        logging.warning('User:\'' + str(request.email) + '\'. Translation draft generation unsuccessful as no books were selected by user')
         return '{"success":false, "message":"Select the books to be Translated."}'
     connection = get_db()
     cursor = connection.cursor()
@@ -1090,18 +1091,20 @@ def translations():
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (sourcelang, version))
     rst = cursor.fetchone()
     if not rst:
-        logging.warning('Translation draft generation unsuccessful as no books were selected by user \'' + str(request.email) + '\'')
+        logging.warning('User:\'' + str(request.email) + '\'. Source selected by the user is not available.')
         return '{"success":false, "message":"Source is not available. Upload it"}'
     else:
         source_id = rst[0]
         cursor.execute("SELECT token, translated_token FROM autotokentranslations WHERE targetlang = %s AND source_id = %s AND translated_token IS NOT NULL", (targetlang, source_id))
-        for t, tr in cursor.fetchall():
-            if tr:
-                tokens[t] = tr
-        tr = {}
-        tag_check = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~', '।']
+        for t, tt in cursor.fetchall():
+            if tt:
+                tokens[t] = tt
+        tr = {} # To store untranslated tokens
+        punctuations = ['!', '#', '$', '%', '"', '—', "'", "``", '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', '।', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~'] # Can be replaced with string.punctuation. But an extra character '``' is added here
         untranslated = []
-        pattern_match = re.compile(r'\\[a-z]{1,3}\d?')
+        single_quote = ["'"]
+        double_quotes = ['"', "``"]
+        pattern_match = re.compile(r'\\[a-z]{1,3}\d?') # To find any usfm markers in the text. 
         for book in books:
             cursor.execute("SELECT content FROM sourcetexts WHERE source_id = %s AND revision_num = %s and book_name = %s", (source_id, revision, book))
             source_content = cursor.fetchone()
@@ -1111,38 +1114,44 @@ def translations():
                 changes.append(book_name)
                 hyphenated_words = re.findall(r'\w+-\w+', source_content[0])
                 content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’])', r' \1 ', source_content[0])
+                single_quote_count = 0
+                double_quotes_count = 0
                 for line in content.split("\n"):
                     line_words = nltk.word_tokenize(line)
                     new_line_words = []
                     for word in line_words:
-                        # if word not in tag_check:
-                        if word not in tag_check and not pattern_match.match(word):
-                            new_line_words.append(tokens.get(word, " >>>"+str(word)+"<<<"))
+                        if word in punctuations:
+                            last_word = new_line_words.pop(-1)
+                            if word in single_quote and (single_quote_count % 2 == 0):
+                                word = " " + word + " "
+                            elif word in double_quotes and (double_quotes_count % 2 == 0):
+                                word = " " + word + " "
+                            elif word is ':' and last_word.isdigit():
+                                word = word + " "
+                            word_with_punct = last_word + word
+                            new_line_words.append(word_with_punct)
+                        elif word.isdigit():
+                            new_line_words.append(tokens.get(word, word))
+                        elif not pattern_match.match(word): # TODO: Delete tag_check
+                            new_line_words.append(tokens.get(word, ">>>"+str(word)+"<<<"))
                             if word not in tokens:
                                 untranslated.append(word)
                         else:
                             new_line_words.append(tokens.get(word, word))
                     out_line = " ".join(new_line_words)
+                    out_line = re.sub("  ", "", out_line)
                     out_text_lines.append(out_line)
                 out_text = "\n".join(out_text_lines)
                 for w in hyphenated_words:
-                    word = " >>>"+str(w)+"<<<"
-                    replace = tokens.get(w, " >>>"+str(w)+"<<<")
+                    word = ">>>"+str(w)+"<<<"
+                    replace = tokens.get(w, ">>>"+str(w)+"<<<")
                     out_text = re.sub(r'' + str(word), str(replace), out_text)
-                out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।\”\’ ])', r'\1', out_text)
-                out_final = re.sub(r'([\‘\“])\s?', r'\1', out_final)
-                out_final = re.sub(r'-\s', '-', out_final)
-                out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
-                out_final = re.sub(r'>>>(\d+)<<<', r'\1', out_final)
-                out_final = re.sub(r'>>>(\d+)-(\d+)<<<', r'\1-\2', out_final)
+                out_final = re.sub(r'>>>(\d+)-(\d+)<<<', r'\1-\2', out_text)
                 out_final = re.sub(r'>>>(\d+)—(\d+)<<<', r'\1—\2', out_final)
                 out_final = re.sub(r'\[ ', r' [', out_final)
                 out_final = re.sub(r'\( ', r' (', out_final)
-                out_final = re.sub(r'\n', r'\n\n', out_final)
-                out_final = re.sub(r'\'\s', r" '", out_final)
-                out_final = re.sub(r'\n\n', r'\n', out_final)
-                out_final = re.sub('>>>``<<<', '"', out_final)
-                out_final = re.sub(r'\\toc2', r'\\toc2 ', out_final)
+                out_final = re.sub('  ', '', out_final)
+                out_final = re.sub("``", '"', out_final)
                 out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
                 out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name), out_final)
                 out_final = re.sub(r'\\rem.*', '', out_final)
@@ -1156,7 +1165,7 @@ def translations():
             logging.warning('User:\'' + str(request.email) + '\'. Translation draft successfully generated for book/books ' + ", ".join(changes) + '. Source ID:' + str(source_id) + '. Revision:' + str(revision) + '. Target Language:' + str(targetlang))
             return json.dumps(tr)
         else:
-            logging.warning('User:\'' + str(request.email) + '\'. Translation draft generat unsuccessful')
+            logging.warning('User:\'' + str(request.email) + '\'. Translation draft generation unsuccessful')
             return '{"success":false, "message":"' + ", ".join(changes1) + ' not available. Upload it to generate draft"}'
 
 @app.route("/v1/corrections", methods=["POST"])
