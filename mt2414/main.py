@@ -1040,7 +1040,6 @@ def get_concordance():
         con = {}
         full_text = pickle.loads(concord[0])
         concordance_list = re.findall('(.*' + str(token) + '.*)', full_text)
-        # con[str(token)] = con["\n".join(concordance_list)]
         cursor.close()
         return json.dumps("\n".join(concordance_list))
 
