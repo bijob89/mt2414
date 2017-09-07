@@ -993,56 +993,30 @@ def generate_concordance():
     req = request.get_json(True)
     language = req["language"]
     version = req["version"]
+    revision = req["revision"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT id from sources WHERE language = %s and version = %s", (language, version))
-    source_id = cursor.fetchone()
-    if not source_id:
-        return '{"success":false, "message":"Unable to find sources. Upload source."}'
-    else:
-        cursor.execute("SELECT token from cluster WHERE source_id = %s", (source_id[0],))
-        token_set = cursor.fetchall()
-        cursor.execute("SELECT book_name, content, revision_num FROM sourcetexts WHERE source_id = %s", (source_id[0],))
-        content = cursor.fetchall()
-        changes = []
-        content_text = []
-        for b, c, r in content:
-            book_name = (re.search('(?<=\id )\w+', c)).group(0)
-            escape_char = re.sub(r'\v ', '\\v ', c)
-            for line in escape_char.split('\n'):
-                if (re.search('(?<=\c )\d+', line)) is not None:
-                    chapter_no = (re.search('(?<=\c )\d+', line)).group(0)
-                if (re.search(r'(?<=\\v )\d+', line)) is not None:
-                    verse_no = re.search(r'((?<=\\v )\d+)', line).group(0)
-                    verse = re.search(r'(?<=)(\\v )(\d+ )(.*)', line).group(3)
-                    ref = str(book_name) + " - " + str(chapter_no) + ":" + str(verse_no)
-                    content_text.append((r, ref, verse))
-        full_text_list = []
-        for item in content_text:
-            temp_text = " ".join(item)
-            full_text_list.append(temp_text)
-        full_text = "\n".join(full_text_list)
-        for i in range(0, len(token_set)):
-            token = token_set[i][0]
-            if token:
-                concord = re.findall('(.*' + str(token) + '.*)', full_text)
-                for line in concord:
-                    line_split = re.search(r'(\d+)(\s)(.*\d+:\d+)(\s)(.*)', line)
-                    ref_no = line_split.group(3)
-                    verse = line_split.group(5)
-                    revision_num = line_split.group(1)
-                    cursor.execute("SELECT book_name FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id[0], revision_num))
-                    ref_book = cursor.fetchall()
-                    db_book = [ref_book[x][0] for x in range(0, len(ref_book))]
-                    if ref_no not in db_book:
-                        cursor.execute("INSERT INTO concordance (token, book_name, concordances, revision_num, source_id) VALUES (%s, %s, %s, %s, %s)", (token, ref_no, verse, revision_num, source_id[0]))
-                        changes.append(book_name)
-        cursor.close()
-        connection.commit()
-        if changes:
-            return '{"success":true, "message":"concordances created and stored in DB"}'
-        else:
-            return '{"success":false, "message":"No changes made. Concordances are already up-to-date"}'
+    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (language, version))
+    rst = cursor.fetchone()
+    if not rst:
+        return '{"success":false, "message":"Source does not exist"}'
+    source_id = rst[0]
+    cursor.execute("SELECT content FROM sourcetexts WHERE source_id = %s AND revision_num = %s", (source_id, revision))
+    rst1 = cursor.fetchall()
+    full_list = []
+    for item in rst1:
+        book_name = re.search('(?<=\id )\w+', item[0]).group(0)
+        split_content = item[0].split('\c ')
+        split_content.pop(0)
+        for i in split_content:
+            chapter_no = i.split('\n', 1)[0]
+            full_list.append(re.sub(r'\\v ', str(book_name) + ' ' + str(chapter_no) + ':', i))
+    full_text = "\n".join(full_list)
+    db_item = pickle.dumps(full_text)
+    cursor.execute("INSERT into concordance (pickledata, source_id, revision_num) VALUES (%s, %s, %s)", (db_item, source_id, revision))
+    cursor.close()
+    connection.commit()
+    return '{"success":true, "message":"Concordance list has been generated successfully"}'
 
 @app.route("/v1/getconcordance", methods=["POST", "GET"])               #-----------------To download concordance-------------------#
 @check_token
@@ -1059,17 +1033,16 @@ def get_concordance():
     if not source_id:
         return '{"success":false, "message":"Source is not available. Upload it"}'
     else:
-        cursor.execute("SELECT book_name, concordances FROM concordance WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id[0], str(revision)))
-        concord = cursor.fetchall()
+        cursor.execute("SELECT pickledata FROM concordance WHERE source_id = %s AND revision_num = %s", (source_id[0], revision))
+        concord = cursor.fetchone()
         if not concord:
             return '{"success":false, "message":"Token is not available"}'
         con = {}
-        for i in range(0, len(concord)):
-            book = concord[i][0]
-            concordances = concord[i][1]
-            con[str(book)] = str(concordances)
+        full_text = pickle.loads(concord[0])
+        concordance_list = re.findall('(.*' + str(token) + '.*)', full_text)
+        # con[str(token)] = con["\n".join(concordance_list)]
         cursor.close()
-        return json.dumps(con)
+        return json.dumps("\n".join(concordance_list))
 
 @app.route("/v1/translations", methods=["POST"])                   #---------------To download translation draft-------------------#
 @check_token
