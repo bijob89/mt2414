@@ -1101,10 +1101,14 @@ def translations():
                     for word in line_words:
                         if word in punctuations:
                             last_word = new_line_words.pop(-1)
-                            if word in single_quote and (single_quote_count % 2 == 0):
-                                word = " " + word + " "
-                            elif word in double_quotes and (double_quotes_count % 2 == 0):
-                                word = " " + word + " "
+                            if word in single_quote:
+                                if single_quote_count % 2 == 0:
+                                    word = " " + word + " "
+                                single_quote_count += 1
+                            elif word in double_quotes:
+                                if double_quotes_count % 2 == 0:
+                                    word = " " + word + " "
+                                double_quotes_count += 1
                             elif word is ':' and last_word.isdigit():
                                 word = word + " "
                             word_with_punct = last_word + word
@@ -1131,6 +1135,8 @@ def translations():
                 out_final = re.sub(r'\( ', r' (', out_final)
                 out_final = re.sub('  ', '', out_final)
                 out_final = re.sub("``", '"', out_final)
+                out_final = re.sub(r"(\\v) (\d+)(')", r'\1 \2 \3', out_final)
+                out_final = re.sub(r'(\\v) (\d+)(")', r'\1 \2 \3', out_final)
                 out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
                 out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name), out_final)
                 out_final = re.sub(r'\\rem.*', '', out_final)
