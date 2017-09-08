@@ -1013,10 +1013,15 @@ def generate_concordance():
             full_list.append(re.sub(r'\\v ', str(book_name) + ' ' + str(chapter_no) + ':', i))
     full_text = "\n".join(full_list)
     db_item = pickle.dumps(full_text)
-    cursor.execute("INSERT into concordance (pickledata, source_id, revision_num) VALUES (%s, %s, %s)", (db_item, source_id, revision))
+    cursor.execute("SELECT pickledata FROM concordance WHERE source_id = %s AND revision_num = %s", (source_id, revision))
+    rst2 = cursor.fetchone()
+    if not rst2:
+        cursor.execute("INSERT into concordance (pickledata, source_id, revision_num) VALUES (%s, %s, %s)", (db_item, source_id, revision))
+    else:
+        cursor.execute("UPDATE concordance SET pickledata = %s WHERE source_id = %s AND revision_num = %s", (db_item, source_id, revision))
     cursor.close()
     connection.commit()
-    return '{"success":true, "message":"Concordance list has been generated successfully"}'
+    return '{"success":true, "message":"Concordance list has been updated"}'
 
 @app.route("/v1/getconcordance", methods=["POST", "GET"])               #-----------------To download concordance-------------------#
 @check_token
@@ -1036,10 +1041,12 @@ def get_concordance():
         cursor.execute("SELECT pickledata FROM concordance WHERE source_id = %s AND revision_num = %s", (source_id[0], revision))
         concord = cursor.fetchone()
         if not concord:
-            return '{"success":false, "message":"Token is not available"}'
+            return '{"success":false, "message":"Concordance list has not been generated yet. Please select the referesh button to generate it."}'
         con = {}
         full_text = pickle.loads(concord[0])
         concordance_list = re.findall('(.*' + str(token) + '.*)', full_text)
+        if not concordance_list:
+            return '{"success":false, "message":"The selected token is not available for the source langauage and version selected. Please select the referesh button and try again"}'
         cursor.close()
         return json.dumps("\n".join(concordance_list))
 
