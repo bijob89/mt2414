@@ -554,9 +554,10 @@ def book():
         cursor.close()
         return json.dumps(list(book_list))
 
-@app.route("/v1/getbookwiseautotokens", methods=["POST", "GET"])      #--------------To download tokenwords in an Excel file (bookwise)---------------#
+@app.route("/v1/getbookwiseautotokens", methods=["POST", "GET"], defaults={'excel_status':'true'})
+@app.route("/v1/getbookwiseautotokens/<excel_status>", methods=["POST", "GET"])      #--------------To download tokenwords in an Excel file (bookwise)---------------#
 @check_token
-def bookwiseagt():
+def bookwiseagt(excel_status):
     req = request.get_json(True)
     sourcelang = req["sourcelang"]
     version = req["version"]
@@ -606,8 +607,11 @@ def bookwiseagt():
                 output = flask.make_response(sheet.xlsx)
                 output.headers["Content-Disposition"] = "attachment; filename = %s.xlsx" % (bkn)
                 output.headers["Content-type"] = "xlsx"
-                logging.warning('User: \'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
-                return output
+                logging.warning('User:\'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
+                if excel_status == "true":
+                    return output
+                else:
+                    return json.dumps(list(token_set))
             elif include_books and exclude_books:
                 for bkn in include_books:
                     cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s AND book_name = %s", (source_id[0], revision, bkn,))
@@ -621,17 +625,20 @@ def bookwiseagt():
                     for t in ntokens:
                         exclude_tokens.append(t[0])
                 set_toknwords = set(token_list) - set(exclude_tokens)
-                output = set(set_toknwords) - set(translated_tokens)
+                token_set = set(set_toknwords) - set(translated_tokens)
                 cursor.close()
                 result = [['TOKEN', 'TRANSLATION']]
-                for i in list(output):
+                for i in list(token_set):
                     result.append([i])
                 sheet = pyexcel.Sheet(result)
                 output = flask.make_response(sheet.xlsx)
                 output.headers["Content-Disposition"] = "attachment; filename = %s.xlsx" % (bkn)
                 output.headers["Content-type"] = "xlsx"
-                logging.warning('User: \'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + ' excluding from ' + ', '.join(exclude_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
-                return output
+                logging.warning('User:\'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + ' excluding from ' + ', '.join(exclude_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
+                if excel_status == "true":
+                    return output
+                else:
+                    return json.dumps(list(token_set))
         elif b and c:
             logging.warning('User: \'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b) + list(c))) + '\' not available')
             return '{"success":false, "message":" %s and %s is not available. Upload it."}' % ((list(b)), list(c))
@@ -817,6 +824,53 @@ def upload_tokens_translation():
             return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
     else:
         return '{"success":false, "message":"Tokens have no translation"}'
+
+def pickle_for_translation_update(translation, p_data = None):
+    tr = {'translation': translation, 'user': request.email, 'date': str(datetime.datetime.utcnow())}
+    if not p_data:
+        translation_details = list(tr)
+    else:
+        translation_details = pickle.loads(p_data)
+        translation_details.append(tr)
+    pickledata = pickle.dumps(translation_details)
+    return pickledata
+
+@app.route("/v1/updatetranslation", methods=["POST"])
+@check_token
+def update_translation():
+    req = request.get_json(True)
+    sourcelang = req["sourcelang"]
+    version = req["version"]
+    revision = req["revision"]
+    token = req["token"]
+    translation = req["translation"]
+    targetlang = req["targetlang"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (sourcelang, version))
+    source_id = cursor.fetchone()[0]
+    cursor. execute("SELECT token FROM autotokentranslations WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (token, source_id, revision, targetlang))
+    if not cursor.fetchone():
+        cursor.execute("SELECT token FROM cluster WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id, revision))
+        if not cursor.fetchone():
+            return '{"success":false, "message":"The selected token is not a token from the selected source"}'
+        else:
+            pickledata = pickle_for_translation_update(translation)
+            cursor.execute("INSERT INTO autotokentranslations (token, translated_token, pickledata targetlang, revision_num, source_id)", (token, translation, pickledata, targetlang, revision, source_id))
+            cursor.close()
+            connection.commit()
+            return '{"success":true, "message":"Token has been updated"}'
+    else:
+        cursor.execute("SELECT pickledata FROM autotokentranslations WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (token, source_id, revision, targetlang))
+        rst = cursor.fetchone()
+        if not rst:
+            pickledata = pickle_for_translation_update(translation)
+        else:
+            pickledata = pickle_for_translation_update(rst[0])
+        cursor.execute("UPDATE autotokentranslations SET translated_token = %s, pickledata = %s WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (translation, pickledata, token, source_id, revision, targetlang))
+        cursor.close()
+        connection.commit()
+        return '{"success":true, "message":"Token has been updated"}'
 
 @app.route("/v1/updatetokentranslation", methods=["POST"])     #-------------To update token translation (only for admin)-----------------#
 @check_token

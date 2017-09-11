@@ -90,7 +90,8 @@ CREATE TABLE autotokentranslations (
 	created_at timestamp with time zone,
 	updated_at timestamp with time zone,
 	deleted_at timestamp with time zone,
-	source_id BIGINT REFERENCES sources(id) NOT NULL
+	source_id BIGINT REFERENCES sources(id) NOT NULL,
+	pickledata BYTEA
 );
 
 CREATE TABLE taggedtokens (
