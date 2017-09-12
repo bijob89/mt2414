@@ -849,14 +849,14 @@ def update_translation():
     cursor = connection.cursor()
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (sourcelang, version))
     source_id = cursor.fetchone()[0]
-    cursor. execute("SELECT token FROM autotokentranslations WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (token, source_id, revision, targetlang))
+    cursor.execute("SELECT token FROM autotokentranslations WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (token, source_id, revision, targetlang))
     if not cursor.fetchone():
         cursor.execute("SELECT token FROM cluster WHERE token = %s AND source_id = %s AND revision_num = %s", (token, source_id, revision))
         if not cursor.fetchone():
             return '{"success":false, "message":"The selected token is not a token from the selected source"}'
         else:
             pickledata = pickle_for_translation_update(translation)
-            cursor.execute("INSERT INTO autotokentranslations (token, translated_token, pickledata, targetlang, revision_num, source_id)", (token, translation, pickledata, targetlang, revision, source_id))
+            cursor.execute("INSERT INTO autotokentranslations (token, translated_token, pickledata, targetlang, revision_num, source_id) VALUES (%s, %s, %s, %s, %s, %s)", (token, translation, pickledata, targetlang, revision, source_id))
             cursor.close()
             connection.commit()
             return '{"success":true, "message":"Token has been updated"}'
