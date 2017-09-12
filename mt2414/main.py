@@ -856,7 +856,7 @@ def update_translation():
             return '{"success":false, "message":"The selected token is not a token from the selected source"}'
         else:
             pickledata = pickle_for_translation_update(translation)
-            cursor.execute("INSERT INTO autotokentranslations (token, translated_token, pickledata targetlang, revision_num, source_id)", (token, translation, pickledata, targetlang, revision, source_id))
+            cursor.execute("INSERT INTO autotokentranslations (token, translated_token, pickledata, targetlang, revision_num, source_id)", (token, translation, pickledata, targetlang, revision, source_id))
             cursor.close()
             connection.commit()
             return '{"success":true, "message":"Token has been updated"}'
