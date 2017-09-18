@@ -11,10 +11,11 @@ before_install:
   - psql -d mt2414 -f mt2414/db.sql
 
 install:
+  - pip install pylint
   - pip install pyexcel-xlsx
   - pip install pyexcel-xls
   - pip install -r requirements.txt
   - python setup.py develop
 
 script:
-  - mt2414/main
+  - pylint mt2414/main.py
