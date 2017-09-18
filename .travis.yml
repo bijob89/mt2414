@@ -27,3 +27,6 @@ script:
 after_script:
   - gunicorn mt2414.main:app &
   - curl -X POST -d "username=test@yopmail.com" -d "password=nis123" "http://localhost:8000/v1/auth"
+  - AMT_TOKEN = $!
+  - echo AMT_TOKEN
+  
