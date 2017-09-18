@@ -9,7 +9,7 @@ services:
 before_install:
   - createdb mt2414
   - psql -d mt2414 -f mt2414/db.sql
-  - psql -d mt2414 -c 'INSERT INTO users VALUES ("test@email.com", True, "91827kh2kjhkg23kj2h3k", 'b'\xb1#\x0c\xac\x1a\xbbJ\xe4\xa9%\x92\xc3u\xcc&\x98\xe3[\x10\xbf\xe86\x0f\x9a\xdbs\xe7\xd8w4b\x9e8\xa2Y\x8e\x19\xc7\x8fP\xc1\xa0\x04\x8a\x7f\xaa\n\x02\xd9VA\xb3\xf2p\xd31[\xe5w\t WB\x91', '5dba38decb3840a6ac6d8259ff585226', None, None, None, 3)'
+  - psql -d mt2414 -c "INSERT INTO users (email, email_verified, verification_code, password_hash, password_salt, created_at, updated_at, deleted_at, role_id) VALUES ('test@email.com', True, '2b53a3f625a441168c576afaf8b72b77', '\xa40d2e3ffcd2b3cd22c6bfe69257fd89e69639bc172ef646928861bbb128e5b1d712d6fb1119c45644623f2718dac2263fff4f8543a2894e2b20adc2ff09f590', '\x6637386637383332393039613437396539643734366434656661346262623932', '2017-09-18 10:59:58.295947+05:30', '2017-09-18 10:59:58.295947+05:30', '2017-09-18 10:59:58.295947+05:30', 3)"
 
 install:
   - pip install pylint
