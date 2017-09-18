@@ -7,7 +7,7 @@ services:
   - postgresql
 
 before_install:
-  - psql createdb mt2414
+  - createdb mt2414
   - psql -d mt2414 -f mt2414/db.sql
 
 install:
