@@ -9,6 +9,7 @@ services:
 before_install:
   - createdb mt2414
   - psql -d mt2414 -f mt2414/db.sql
+  - psql -d mt2414 -c 'INSERT INTO users VALUES ("test@email.com", True, "91827kh2kjhkg23kj2h3k", 'b'\xb1#\x0c\xac\x1a\xbbJ\xe4\xa9%\x92\xc3u\xcc&\x98\xe3[\x10\xbf\xe86\x0f\x9a\xdbs\xe7\xd8w4b\x9e8\xa2Y\x8e\x19\xc7\x8fP\xc1\xa0\x04\x8a\x7f\xaa\n\x02\xd9VA\xb3\xf2p\xd31[\xe5w\t WB\x91', '5dba38decb3840a6ac6d8259ff585226', None, None, None, 3)'
 
 install:
   - pip install pylint
