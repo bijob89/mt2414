@@ -9,6 +9,7 @@ services:
 before_install:
   - createdb mt2414
   - psql -d mt2414 -f mt2414/db.sql
+  - psql -d mt2414 -c "INSERT INTO users (email, email_verified, verification_code, password_hash, password_salt, created_at, updated_at, deleted_at, role_id) VALUES ('test@email.com', True, '2b53a3f625a441168c576afaf8b72b77', '\xa40d2e3ffcd2b3cd22c6bfe69257fd89e69639bc172ef646928861bbb128e5b1d712d6fb1119c45644623f2718dac2263fff4f8543a2894e2b20adc2ff09f590', '\x6637386637383332393039613437396539643734366434656661346262623932', '2017-09-18 10:59:58.295947+05:30', '2017-09-18 10:59:58.295947+05:30', '2017-09-18 10:59:58.295947+05:30', 3)"
 
 install:
   - pip install pylint
@@ -25,4 +26,7 @@ script:
 
 after_script:
   - gunicorn mt2414.main:app &
-  - curl -X POST -d "username=test" -d "password=password" "http://localhost:8000/v1/auth"
+  - curl -X POST -d "username=test@yopmail.com" -d "password=nis123" "http://localhost:8000/v1/auth"
+  - AMT_TOKEN = $!
+  - echo AMT_TOKEN
+  
