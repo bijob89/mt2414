@@ -4,7 +4,6 @@ import urllib.request
 from functools import wraps
 from datetime import datetime, timedelta
 import datetime
-import scrypt
 import requests
 import jwt
 from flask import Flask, request, session, redirect
@@ -21,6 +20,7 @@ import pyexcel
 import logging
 import pickle
 import pyotp
+import scrypt
 import psycopg2
 
 
