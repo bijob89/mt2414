@@ -26,6 +26,6 @@ script:
 
 after_script:
   - gunicorn mt2414.main:app &
-  - result=$(curl -X POST -d "username=test@yopmail.com" -d "password=nis123" "http://localhost:8000/v1/auth")
+  - result=$(curl -X POST -d "username=test@yopmail.com" -d "password=nis123" "http://127.0.0.1:8000/v1/auth")
   - echo $result
   
