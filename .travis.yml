@@ -21,7 +21,7 @@ install:
 
 script:
   - echo "Tests are currently disabled. Enable them when you are ready to test."
-  - pylint --reports=n --max-line-length=200 --disable=deprecated-module --const-rgx='[a-z_][a-z0-9_]{2,30}$' mt2414/main.py
+  #- pylint --reports=n --max-line-length=200 --disable=deprecated-module --const-rgx='[a-z_][a-z0-9_]{2,30}$' mt2414/main.py
   #- run unit tests
 
 after_script:
