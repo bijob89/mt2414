@@ -3,7 +3,6 @@ import uuid
 import urllib.request
 from functools import wraps
 from datetime import datetime, timedelta
-import datetime
 import requests
 import jwt
 from flask import Flask, request, session, redirect
