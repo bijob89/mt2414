@@ -1,43 +1,42 @@
+##### Pylint Configurations #################
+# For the complete list of pylint error messages, http://pylint-messages.wikidot.com/all-codes
+# To disable pylint "Line too long (%s/%s)" error message.
+# pylint: disable=C0301
+# To disable too many modules error message.
+# pylint: disable=C0302
+# To disable Anomalous backslash in string: \'%s\'. String constant might be missing an r prefix.
+# pylint: disable=W1401
+# To disable missing module docstring error message.
+# pylint: disable=C0111
+# ##### Pylint Configurations ends here########
+
 import os
 import uuid
 import urllib.request
-import psycopg2
 from functools import wraps
-from datetime import datetime, timedelta
 import datetime
-import scrypt
-import requests
-import jwt
-from flask import Flask, request, session, redirect
-from flask import g
-from flask_cors import CORS, cross_origin
-import nltk
+from datetime import datetime, timedelta
 import re
-import xlrd
-from xlrd import open_workbook
+# import xlrd # disabling, pylint recommendation
+# from xlrd import open_workbook
 import json
 import ast
-import flask
-import pyexcel
 import logging
 import pickle
 import pyotp
+import pyexcel
+import nltk
+import flask
+from flask import Flask, request, session, redirect
+from flask import g
+from flask_cors import CORS, cross_origin
+import jwt
+import requests
+import scrypt
+import psycopg2
 
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
-
-PO_METADATA = {
-    'Project-Id-Version': '1.0',
-    'Report-Msgid-Bugs-To': 'tfbfgroup@googlegroups.com',
-    'POT-Creation-Date': '2007-10-18 14:00+0100',
-    'PO-Revision-Date': '2007-10-18 14:00+0100',
-    'Last-Translator': 'you <you@example.com>',
-    'Language-Team': 'English <yourteam@example.com>',
-    'MIME-Version': '1.0',
-    'Content-Type': 'text/plain; charset=utf-8',
-    'Content-Transfer-Encoding': '8bit',
-}
-
 
 app = Flask(__name__)
 CORS(app)
