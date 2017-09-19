@@ -2,30 +2,36 @@
 # For the complete list of pylint error messages, http://pylint-messages.wikidot.com/all-codes
 # To disable pylint "Line too long (%s/%s)" error message.
 # pylint: disable=C0301
-# pylint: disable=C0302 
-##### Pylint Configurations ends here########
+# To disable too many modules error message.
+# pylint: disable=C0302
+# To disable Anomalous backslash in string: \'%s\'. String constant might be missing an r prefix.
+# pylint: disable=W1401
+# To disable missing module docstring error message.
+# pylint: disable=C0111
+# ##### Pylint Configurations ends here########
 
 import os
 import uuid
 import urllib.request
 from functools import wraps
+import datetime
 from datetime import datetime, timedelta
-import requests
-import jwt
-from flask import Flask, request, session, redirect
-from flask import g
-from flask_cors import CORS, cross_origin
-import nltk
 import re
-import xlrd
-from xlrd import open_workbook
+# import xlrd # disabling, pylint recommendation
+# from xlrd import open_workbook
 import json
 import ast
-import flask
 import pyexcel
 import logging
 import pickle
 import pyotp
+import nltk
+import flask
+from flask import Flask, request, session, redirect
+from flask import g
+from flask_cors import CORS, cross_origin
+import jwt
+import requests
 import scrypt
 import psycopg2
 
