@@ -1,3 +1,10 @@
+##### Pylint Configurations #################
+# For the complete list of pylint error messages, http://pylint-messages.wikidot.com/all-codes
+# To disable pylint "Line too long (%s/%s)" error message.
+# pylint: disable=C0301
+# pylint: disable=C0302 
+##### Pylint Configurations ends here########
+
 import os
 import uuid
 import urllib.request
@@ -22,11 +29,6 @@ import pyotp
 import scrypt
 import psycopg2
 
-##### Pylint Configurations #################
-# For the complete list of pylint error messages, http://pylint-messages.wikidot.com/all-codes
-# To disable pylint "Line too long (%s/%s)" error message.
-# pylint: disable=C0301 
-##### Pylint Configurations ends here########
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
