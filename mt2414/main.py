@@ -31,19 +31,6 @@ import psycopg2
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
-PO_METADATA = {
-    'Project-Id-Version': '1.0',
-    'Report-Msgid-Bugs-To': 'tfbfgroup@googlegroups.com',
-    'POT-Creation-Date': '2007-10-18 14:00+0100',
-    'PO-Revision-Date': '2007-10-18 14:00+0100',
-    'Last-Translator': 'you <you@example.com>',
-    'Language-Team': 'English <yourteam@example.com>',
-    'MIME-Version': '1.0',
-    'Content-Type': 'text/plain; charset=utf-8',
-    'Content-Transfer-Encoding': '8bit',
-}
-
-
 app = Flask(__name__)
 CORS(app)
 
