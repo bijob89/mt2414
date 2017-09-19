@@ -1,7 +1,6 @@
 import os
 import uuid
 import urllib.request
-import psycopg2
 from functools import wraps
 from datetime import datetime, timedelta
 import datetime
@@ -22,6 +21,7 @@ import pyexcel
 import logging
 import pickle
 import pyotp
+import psycopg2
 
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
