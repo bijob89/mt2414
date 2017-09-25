@@ -1105,7 +1105,7 @@ def get_concordance():
         concordance_set = "\n".join(concordance_list)
         concordance = re.sub(str(token) ,'<mark><b>' + str(token) + '</b></mark>', concordance_set)
         cursor.close()
-        return json.dumps("\n".join(concordance))
+        return json.dumps(concordance)
 
 @app.route("/v1/translations", methods=["POST"])                   #---------------To download translation draft-------------------#
 @check_token
