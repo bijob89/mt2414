@@ -1099,10 +1099,13 @@ def get_concordance():
         con = {}
         full_text = pickle.loads(concord[0])
         concordance_list = re.findall('(.*' + str(token) + '.*)', full_text)
+        
         if not concordance_list:
             return '{"success":false, "message":"The selected token is not available for the source langauage and version selected. Please select the referesh button and try again"}'
+        concordance_set = "\n".join(concordance_list)
+        concordance = re.sub(str(token) ,'<mark><b>' + str(token) + '</b></mark>', concordance_set)
         cursor.close()
-        return json.dumps("\n".join(concordance_list))
+        return json.dumps("\n".join(concordance))
 
 @app.route("/v1/translations", methods=["POST"])                   #---------------To download translation draft-------------------#
 @check_token
