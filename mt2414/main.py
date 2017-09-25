@@ -1102,7 +1102,8 @@ def get_concordance():
         
         if not concordance_list:
             return '{"success":false, "message":"The selected token is not available for the source langauage and version selected. Please select the referesh button and try again"}'
-        concordance_set = "\n".join(concordance_list)
+        concordance_set = "</p>\n<p>".join(concordance_list)
+        concordance_set = "<p>" + concordance_set + "</p>"
         concordance = re.sub(str(token) ,'<mark><b>' + str(token) + '</b></mark>', concordance_set)
         cursor.close()
         return json.dumps(concordance)
