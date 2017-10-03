@@ -866,7 +866,7 @@ def update_translation():
         if not rst:
             pickledata = pickle_for_translation_update(translation)
         else:
-            pickledata = pickle_for_translation_update(rst[0])
+            pickledata = pickle_for_translation_update(translation, rst[0])
         cursor.execute("UPDATE autotokentranslations SET translated_token = %s, pickledata = %s WHERE token = %s AND source_id = %s AND revision_num = %s AND targetlang = %s", (translation, pickledata, token, source_id, revision, targetlang))
         cursor.close()
         connection.commit()
@@ -1102,9 +1102,7 @@ def get_concordance():
         
         if not concordance_list:
             return '{"success":false, "message":"The selected token is not available for the source langauage and version selected. Please select the referesh button and try again"}'
-        concordance_set = "</p>\n<p>".join(concordance_list)
-        concordance_set = "<p>" + concordance_set + "</p>"
-        concordance = re.sub(str(token) ,'<mark><b>' + str(token) + '</b></mark>', concordance_set)
+        concordance = "\n".join(concordance_list)
         cursor.close()
         return json.dumps(concordance)
 
