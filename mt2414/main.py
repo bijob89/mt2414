@@ -85,9 +85,9 @@ def auth():
     role = rst[2]
     if password_hash == password_hash_new:
         access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1), 'role': role}, jwt_hs256_secret, algorithm='HS256')
-        logging.warning('User \'' + str(email) + '\' logged in successfully')
+        logging.warning('User: \'' + str(email) + '\' logged in successfully')
         return '{"access_token": "%s"}\n' % (access_token.decode('utf-8'),)
-    logging.warning('User \'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
+    logging.warning('User: \'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
     return '{"success":false, "message":"Incorrect Password"}'
 
 @app.route("/v1/registrations", methods=["POST"])       #-----------------For user registrations-----------------#
@@ -354,7 +354,7 @@ def sources():
             convert_file = (read_file.decode('utf-8').replace('\r', ''))
             book_name_check = re.search('(?<=\id )\w{3}', convert_file)
             if not book_name_check:
-                logging.warning('User:\'' + str(email_id) + '(' + str(user_role) + ')\'. File content \'' + str(content) + '\' in incorrect format.')
+                logging.warning('User: \'' + str(email_id) + '(' + str(user_role) + ')\'. File content \'' + str(content) + '\' in incorrect format.')
                 return '{"success":false, "message":"Upload Failed. File content in incorrect format."}'
             book_name = book_name_check.group(0)
             text_file = re.sub(r'(\\rem.*)', '', convert_file)
@@ -371,14 +371,14 @@ def sources():
                     revision_num = count + 1
                     cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
                     changes.append(book_name)
-                    logging.warning('User:\'' + str(email_id) + '(' + str(user_role) + ')\' uploaded revised version of \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
+                    logging.warning('User: \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded revised version of \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
                     token_set = tokenise(text_file)
                     for t in token_set:
                         cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
             elif book_name not in books:
                 revision_num = 1
                 cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
-                logging.warning('User:\'' + str(email_id) + '(' + str(user_role) + ')\' uploaded new book \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
+                logging.warning('User: \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded new book \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
                 changes.append(book_name)
                 token_set = tokenise(text_file)
                 for t in token_set:
@@ -607,7 +607,7 @@ def bookwiseagt():
                 output = flask.make_response(sheet.xlsx)
                 output.headers["Content-Disposition"] = "attachment; filename = %s.xlsx" % (bkn)
                 output.headers["Content-type"] = "xlsx"
-                logging.warning('User:\'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
+                logging.warning('User: \'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
                 return output
             elif include_books and exclude_books:
                 for bkn in include_books:
@@ -631,16 +631,16 @@ def bookwiseagt():
                 output = flask.make_response(sheet.xlsx)
                 output.headers["Content-Disposition"] = "attachment; filename = %s.xlsx" % (bkn)
                 output.headers["Content-type"] = "xlsx"
-                logging.warning('User:\'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + ' excluding from ' + ', '.join(exclude_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
+                logging.warning('User: \'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + ' excluding from ' + ', '.join(exclude_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
                 return output
         elif b and c:
-            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b) + list(c))) + '\' not available')
+            logging.warning('User: \'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b) + list(c))) + '\' not available')
             return '{"success":false, "message":" %s and %s is not available. Upload it."}' % ((list(b)), list(c))
         elif not b and c:
-            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(c))) + '\' not available')
+            logging.warning('User: \'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(c))) + '\' not available')
             return '{"success":false, "message":" %s is not available. Upload it."}' % (list(c))
         elif not c and b:
-            logging.warning('User:\'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b))) + '\' not available')
+            logging.warning('User: \'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b))) + '\' not available')
             return '{"success":false, "message":" %s is not available. Upload it."}' % ((list(b)))
 
 @app.route("/v1/autotokens", methods=["GET", "POST"])
@@ -770,7 +770,7 @@ def upload_tokens_translation():
     try:
         tokenwords = open_workbook('tokn.xlsx')
     except:
-        logging.warning('User:\'' + str(email_id) + '\'. Token translation upload failed. Invalid file format.')
+        logging.warning('User: \'' + str(email_id) + '\'. Token translation upload failed. Invalid file format.')
         return '{"success":false, "message":"Invalid file format. Upload correct format of xls/xlsx files."}'
     book = tokenwords
     p = book.sheet_by_index(0)
@@ -811,10 +811,10 @@ def upload_tokens_translation():
             if os.path.exists(filename):
                 os.remove(filename)
         if changes:
-            logging.warning('User:\'' + str(email_id) + '\' uploaded translation of tokens successfully')
+            logging.warning('User: \'' + str(email_id) + '\' uploaded translation of tokens successfully')
             return '{"success":true, "message":"Token translation have been uploaded successfully"}'
         else:
-            logging.warning('User:\'' + str(email_id) + '\' upload of token translation unsuccessfully')
+            logging.warning('User: \'' + str(email_id) + '\' upload of token translation unsuccessfully')
             return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
     else:
         return '{"success":false, "message":"Tokens have no translation"}'
@@ -895,10 +895,10 @@ def update_tokens_translation():
                         os.remove(filename)
                     return '{"success":true, "message":"Token translation have been uploaded successfully"}'
                 if changes:
-                    logging.warning('User:\'' + str(request.email) + '\' uploaded translation of tokens successfully')
+                    logging.warning('User: \'' + str(request.email) + '\' uploaded translation of tokens successfully')
                     return '{"success":true, "message":"Token translation have been updated"}'
                 else:
-                    logging.warning('User:\'' + str(request.email) + '\' upload of token translation unsuccessfully')
+                    logging.warning('User: \'' + str(request.email) + '\' upload of token translation unsuccessfully')
                     return '{"success":false, "message":"No Changes. Existing token is already up-to-date."}'
             else:
                 return '{"success":false, "message":"Tokens have no translation"}'
@@ -1084,6 +1084,7 @@ def translations():
     changes = []
     changes1 = []
     if len(books) == 0:
+        logging.warning('User: \'' + str(request.email) + '\'. Translation draft generation unsuccessful as no books were selected by user')
         return '{"success":false, "message":"Select the books to be Translated."}'
     connection = get_db()
     cursor = connection.cursor()
@@ -1091,18 +1092,20 @@ def translations():
     cursor.execute("SELECT id FROM sources WHERE language = %s AND version = %s", (sourcelang, version))
     rst = cursor.fetchone()
     if not rst:
-        logging.warning('Translation draft generation unsuccessful as no books were selected by user \'' + str(request.email) + '\'')
+        logging.warning('User: \'' + str(request.email) + '\'. Source selected by the user is not available.')
         return '{"success":false, "message":"Source is not available. Upload it"}'
     else:
         source_id = rst[0]
         cursor.execute("SELECT token, translated_token FROM autotokentranslations WHERE targetlang = %s AND source_id = %s AND translated_token IS NOT NULL", (targetlang, source_id))
-        for t, tr in cursor.fetchall():
-            if tr:
-                tokens[t] = tr
-        tr = {}
-        tag_check = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~', '।']
+        for t, tt in cursor.fetchall():
+            if tt:
+                tokens[t] = tt
+        tr = {} # To store untranslated tokens
+        punctuations = ['!', '#', '$', '%', '"', '—', "'", "``", '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', '।', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~'] # Can be replaced with string.punctuation. But an extra character '``' is added here
         untranslated = []
-        pattern_match = re.compile(r'\\[a-z]{1,3}\d?')
+        single_quote = ["'"]
+        double_quotes = ['"', "``"]
+        pattern_match = re.compile(r'\\[a-z]{1,3}\d?') # To find any usfm markers in the text. 
         for book in books:
             cursor.execute("SELECT content FROM sourcetexts WHERE source_id = %s AND revision_num = %s and book_name = %s", (source_id, revision, book))
             source_content = cursor.fetchone()
@@ -1112,38 +1115,44 @@ def translations():
                 changes.append(book_name)
                 hyphenated_words = re.findall(r'\w+-\w+', source_content[0])
                 content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’])', r' \1 ', source_content[0])
+                single_quote_count = 0
+                double_quotes_count = 0
                 for line in content.split("\n"):
                     line_words = nltk.word_tokenize(line)
                     new_line_words = []
                     for word in line_words:
-                        # if word not in tag_check:
-                        if word not in tag_check and not pattern_match.match(word):
-                            new_line_words.append(tokens.get(word, " >>>"+str(word)+"<<<"))
+                        if word in punctuations:
+                            last_word = new_line_words.pop(-1)
+                            if word in single_quote and (single_quote_count % 2 == 0):
+                                word = " " + word + " "
+                            elif word in double_quotes and (double_quotes_count % 2 == 0):
+                                word = " " + word + " "
+                            elif word is ':' and last_word.isdigit():
+                                word = word + " "
+                            word_with_punct = last_word + word
+                            new_line_words.append(word_with_punct)
+                        elif word.isdigit():
+                            new_line_words.append(tokens.get(word, word))
+                        elif not pattern_match.match(word): # TODO: Delete tag_check
+                            new_line_words.append(tokens.get(word, ">>>"+str(word)+"<<<"))
                             if word not in tokens:
                                 untranslated.append(word)
                         else:
                             new_line_words.append(tokens.get(word, word))
                     out_line = " ".join(new_line_words)
+                    out_line = re.sub("  ", "", out_line)
                     out_text_lines.append(out_line)
                 out_text = "\n".join(out_text_lines)
                 for w in hyphenated_words:
-                    word = " >>>"+str(w)+"<<<"
-                    replace = tokens.get(w, " >>>"+str(w)+"<<<")
+                    word = ">>>"+str(w)+"<<<"
+                    replace = tokens.get(w, ">>>"+str(w)+"<<<")
                     out_text = re.sub(r'' + str(word), str(replace), out_text)
-                out_final = re.sub(r'\s?([!"#$%&\'\(\)\*\+,-\.\/:;<=>\?\@\[\]^_`{|\}~।\”\’ ])', r'\1', out_text)
-                out_final = re.sub(r'([\‘\“])\s?', r'\1', out_final)
-                out_final = re.sub(r'-\s', '-', out_final)
-                out_final = re.sub(r'(\d+)\s(\d+)', r'\1\2', out_final)
-                out_final = re.sub(r'>>>(\d+)<<<', r'\1', out_final)
-                out_final = re.sub(r'>>>(\d+)-(\d+)<<<', r'\1-\2', out_final)
+                out_final = re.sub(r'>>>(\d+)-(\d+)<<<', r'\1-\2', out_text)
                 out_final = re.sub(r'>>>(\d+)—(\d+)<<<', r'\1—\2', out_final)
                 out_final = re.sub(r'\[ ', r' [', out_final)
                 out_final = re.sub(r'\( ', r' (', out_final)
-                out_final = re.sub(r'\n', r'\n\n', out_final)
-                out_final = re.sub(r'\'\s', r" '", out_final)
-                out_final = re.sub(r'\n\n', r'\n', out_final)
-                out_final = re.sub('>>>``<<<', '"', out_final)
-                out_final = re.sub(r'\\toc2', r'\\toc2 ', out_final)
+                out_final = re.sub('  ', '', out_final)
+                out_final = re.sub("``", '"', out_final)
                 out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
                 out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name), out_final)
                 out_final = re.sub(r'\\rem.*', '', out_final)
@@ -1154,10 +1163,10 @@ def translations():
         cursor.close()
         connection.commit()
         if changes:
-            logging.warning('User:\'' + str(request.email) + '\'. Translation draft successfully generated for book/books ' + ", ".join(changes) + '. Source ID:' + str(source_id) + '. Revision:' + str(revision) + '. Target Language:' + str(targetlang))
+            logging.warning('User: \'' + str(request.email) + '\'. Translation draft successfully generated for book/books ' + ", ".join(changes) + '. Source ID:' + str(source_id) + '. Revision:' + str(revision) + '. Target Language:' + str(targetlang))
             return json.dumps(tr)
         else:
-            logging.warning('User:\'' + str(request.email) + '\'. Translation draft generat unsuccessful')
+            logging.warning('User: \'' + str(request.email) + '\'. Translation draft generation unsuccessful')
             return '{"success":false, "message":"' + ", ".join(changes1) + ' not available. Upload it to generate draft"}'
 
 @app.route("/v1/corrections", methods=["POST"])

@@ -2,3 +2,7 @@
 mt2414.egg-info/
 __pycache__/
 venv3/
+API_logs.log
+dist/
+nano.save
+venv/
