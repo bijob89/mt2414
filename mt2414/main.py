@@ -17,8 +17,7 @@ from functools import wraps
 import datetime
 from datetime import timedelta
 import re
-# import xlrd # disabling, pylint recommendation
-# from xlrd import open_workbook
+from xlrd import open_workbook
 import json
 import ast
 import logging
