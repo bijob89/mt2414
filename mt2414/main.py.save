@@ -15,9 +15,10 @@ import uuid
 import urllib.request
 from functools import wraps
 import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 import re
-from xlrd import open_workbook
+# import xlrd # disabling, pylint recommendation
+# from xlrd import open_workbook
 import json
 import ast
 import logging
@@ -95,7 +96,7 @@ def new_registration():
     headers = {"api-key": sendinblue_key}
     url = "https://api.sendinblue.com/v2.0/email"
     verification_code = str(uuid.uuid4()).replace("-", "")
-    body = '''Hi,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
+q    body = '''Hi,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
     You need to confirm your email by opening this link:
 
     <a href="https://api.mt2414.in/v1/verifications/%s">https://api.mt2414.in/v1/verifications/%s</a>
@@ -606,16 +607,11 @@ def bookwiseagt(excel_status):
                 output = flask.make_response(sheet.xlsx)
                 output.headers["Content-Disposition"] = "attachment; filename = %s.xlsx" % (bkn)
                 output.headers["Content-type"] = "xlsx"
-<<<<<<< HEAD
-                logging.warning('User: \'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
-                return output
-=======
                 logging.warning('User:\'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
                 if excel_status == "true":
                     return output
                 else:
                     return json.dumps(list(token_set))
->>>>>>> fb72015d887941b5fcaab255c09a04c73e89931f
             elif include_books and exclude_books:
                 for bkn in include_books:
                     cursor.execute("SELECT token FROM cluster WHERE source_id = %s AND revision_num = %s AND book_name = %s", (source_id[0], revision, bkn,))
@@ -638,16 +634,11 @@ def bookwiseagt(excel_status):
                 output = flask.make_response(sheet.xlsx)
                 output.headers["Content-Disposition"] = "attachment; filename = %s.xlsx" % (bkn)
                 output.headers["Content-type"] = "xlsx"
-<<<<<<< HEAD
-                logging.warning('User: \'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + ' excluding from ' + ', '.join(exclude_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
-                return output
-=======
                 logging.warning('User:\'' + str(email_id) + '\'. Downloaded tokens from book/books ' + ", ".join(include_books) + ' excluding from ' + ', '.join(exclude_books) + '. Source ID:' + str(source_id[0]) + '. Revision:' + str(revision))
                 if excel_status == "true":
                     return output
                 else:
                     return json.dumps(list(token_set))
->>>>>>> fb72015d887941b5fcaab255c09a04c73e89931f
         elif b and c:
             logging.warning('User: \'' + str(email_id) + '\'. Token download failed, Source books:\'' + str(", ".join(list(b) + list(c))) + '\' not available')
             return '{"success":false, "message":" %s and %s is not available. Upload it."}' % ((list(b)), list(c))
@@ -1165,12 +1156,6 @@ def translations():
                     for word in line_words:
                         if word in punctuations:
                             last_word = new_line_words.pop(-1)
-<<<<<<< HEAD
-                            if word in single_quote and (single_quote_count % 2 == 0):
-                                word = " " + word + " "
-                            elif word in double_quotes and (double_quotes_count % 2 == 0):
-                                word = " " + word + " "
-=======
                             if word in single_quote:
                                 if single_quote_count % 2 == 0:
                                     word = " " + word + " "
@@ -1179,7 +1164,6 @@ def translations():
                                 if double_quotes_count % 2 == 0:
                                     word = " " + word + " "
                                 double_quotes_count += 1
->>>>>>> fb72015d887941b5fcaab255c09a04c73e89931f
                             elif word is ':' and last_word.isdigit():
                                 word = word + " "
                             word_with_punct = last_word + word
@@ -1206,11 +1190,8 @@ def translations():
                 out_final = re.sub(r'\( ', r' (', out_final)
                 out_final = re.sub('  ', '', out_final)
                 out_final = re.sub("``", '"', out_final)
-<<<<<<< HEAD
-=======
                 out_final = re.sub(r"(\\v) (\d+)(')", r'\1 \2 \3', out_final)
                 out_final = re.sub(r'(\\v) (\d+)(")', r'\1 \2 \3', out_final)
->>>>>>> fb72015d887941b5fcaab255c09a04c73e89931f
                 out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
                 out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name), out_final)
                 out_final = re.sub(r'\\rem.*', '', out_final)
