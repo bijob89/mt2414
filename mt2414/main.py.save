@@ -15,7 +15,7 @@ import uuid
 import urllib.request
 from functools import wraps
 import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 import re
 # import xlrd # disabling, pylint recommendation
 # from xlrd import open_workbook
@@ -96,7 +96,7 @@ def new_registration():
     headers = {"api-key": sendinblue_key}
     url = "https://api.sendinblue.com/v2.0/email"
     verification_code = str(uuid.uuid4()).replace("-", "")
-    body = '''Hi,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
+q    body = '''Hi,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
     You need to confirm your email by opening this link:
 
     <a href="https://api.mt2414.in/v1/verifications/%s">https://api.mt2414.in/v1/verifications/%s</a>
