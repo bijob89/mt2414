@@ -1099,7 +1099,6 @@ def get_concordance():
         con = {}
         full_text = pickle.loads(concord[0])
         concordance_list = re.findall('(.*' + str(token) + '.*)', full_text)
-        
         if not concordance_list:
             return '{"success":false, "message":"The selected token is not available for the source langauage and version selected. Please select the referesh button and try again"}'
         concordance = "\n".join(concordance_list)
