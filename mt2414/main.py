@@ -73,7 +73,7 @@ def auth():
     if not est:
         logging.warning('Unregistered user \'%s\' login attempt unsuccessful' % email)
         return '{"success":false, "message":"Invalid email"}'
-    cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s", (email,))
+    cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s and u.email_verified is True", (email,))
     rst = cursor.fetchone()
     if not rst:
         return '{"success":false, "message":"Email is not Verified"}'
@@ -112,7 +112,8 @@ def new_registration():
     password_hash = scrypt.hash(password, password_salt)
     cursor = connection.cursor()
     cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
-    if not cursor.fetchone():
+    rst = cursor.fetchone()
+    if not rst:
         cursor.execute("INSERT INTO users (email, verification_code, password_hash, password_salt, created_at) VALUES (%s, %s, %s, %s, current_timestamp)", (email, verification_code, password_hash, password_salt))
         cursor.close()
         connection.commit()
