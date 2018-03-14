@@ -1134,10 +1134,8 @@ def translations():
             if tt:
                 tokens[t] = tt
         tr = {} # To store untranslated tokens
-        punctuations = ['!', '#', '$', '%', '"', '—', "'", "``", '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', '।', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~'] # Can be replaced with string.punctuation. But an extra character '``' is added here
+        # punctuations = ['!', '#', '$', '%', '"', '—', "'", "``", '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', '।', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~'] # Can be replaced with string.punctuation. But an extra character '``' is added here
         untranslated = []
-        single_quote = ["'"]
-        double_quotes = ['"', "``"]
         pattern_match = re.compile(r'\\[a-z]{1,3}\d?') # To find any usfm markers in the text. 
         for book in books:
             cursor.execute("SELECT content FROM sourcetexts WHERE source_id = %s AND revision_num = %s and book_name = %s", (source_id, revision, book))
@@ -1146,55 +1144,26 @@ def translations():
                 out_text_lines = []
                 book_name = (re.search('(?<=\id )\w+', source_content[0])).group(0)
                 changes.append(book_name)
-                hyphenated_words = re.findall(r'\w+-\w+', source_content[0])
-                content = re.sub(r'([!"#$%&\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~।\”\“\‘\’])', r' \1 ', source_content[0])
-                single_quote_count = 0
-                double_quotes_count = 0
-                for line in content.split("\n"):
+                punct_handler = re.sub(r'\s([' + string.punctuation +'])', r'SPT\1', source_content[0])
+                punct_handler = re.sub(r'([' + string.punctuation +'])\s', r'\1SPT', punct_handler)
+                punct_handler = re.sub(r'([' + string.punctuation +'])', r' \1 ', punct_handler)
+                for line in punct_handler.split("\n"):
                     line_words = nltk.word_tokenize(line)
                     new_line_words = []
                     for word in line_words:
-                        if word in punctuations:
-                            last_word = new_line_words.pop(-1)
-                            if word in single_quote:
-                                if single_quote_count % 2 == 0:
-                                    word = " " + word + " "
-                                single_quote_count += 1
-                            elif word in double_quotes:
-                                if double_quotes_count % 2 == 0:
-                                    word = " " + word + " "
-                                double_quotes_count += 1
-                            elif word is ':' and last_word.isdigit():
-                                word = word + " "
-                            word_with_punct = last_word + word
-                            new_line_words.append(word_with_punct)
-                        elif word.isdigit():
-                            new_line_words.append(tokens.get(word, word))
+                        if word not in tokens:
+                            untranslated.append(word) 
                         elif not pattern_match.match(word): # TODO: Delete tag_check
                             new_line_words.append(tokens.get(word, ">>>"+str(word)+"<<<"))
-                            if word not in tokens:
-                                untranslated.append(word)
                         else:
                             new_line_words.append(tokens.get(word, word))
+                        
                     out_line = " ".join(new_line_words)
-                    out_line = re.sub("  ", "", out_line)
                     out_text_lines.append(out_line)
                 out_text = "\n".join(out_text_lines)
-                for w in hyphenated_words:
-                    word = ">>>"+str(w)+"<<<"
-                    replace = tokens.get(w, ">>>"+str(w)+"<<<")
-                    out_text = re.sub(r'' + str(word), str(replace), out_text)
-                out_final = re.sub(r'>>>(\d+)-(\d+)<<<', r'\1-\2', out_text)
-                out_final = re.sub(r'>>>(\d+)—(\d+)<<<', r'\1—\2', out_final)
-                out_final = re.sub(r'\[ ', r' [', out_final)
-                out_final = re.sub(r'\( ', r' (', out_final)
-                out_final = re.sub('  ', '', out_final)
-                out_final = re.sub("``", '"', out_final)
-                out_final = re.sub(r"(\\v) (\d+)(')", r'\1 \2 \3', out_final)
-                out_final = re.sub(r'(\\v) (\d+)(")', r'\1 \2 \3', out_final)
-                out_final = re.sub(r'\\ide .*', '\\\\ide UTF-8', out_final)
-                out_final = re.sub('(\\\\id .*)', '\\id ' + str(book_name), out_final)
-                out_final = re.sub(r'\\rem.*', '', out_final)
+                out_final = re.sub("``", '"', out_text)
+                out_final = re.sub(r'\s([' + string.punctuation + '])\s', r'\1', out_final)
+                out_final = re.sub(r'SPT', ' ', out_final)
                 tr["untranslated"] = "\n".join(list(set(untranslated)))
                 tr[book_name] = out_final
             else:
