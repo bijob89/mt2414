@@ -33,7 +33,7 @@ import jwt
 import requests
 import scrypt
 import psycopg2
-
+import string
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -1133,8 +1133,8 @@ def translations():
         for t, tt in cursor.fetchall():
             if tt:
                 tokens[t] = tt
-        tr = {} # To store untranslated tokens
-        # punctuations = ['!', '#', '$', '%', '"', '—', "'", "``", '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', '।', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~'] # Can be replaced with string.punctuation. But an extra character '``' is added here
+        tr = {}
+        punctuations = string.punctuation + '।“”‘’'
         untranslated = []
         pattern_match = re.compile(r'\\[a-z]{1,3}\d?') # To find any usfm markers in the text. 
         for book in books:
@@ -1144,17 +1144,26 @@ def translations():
                 out_text_lines = []
                 book_name = (re.search('(?<=\id )\w+', source_content[0])).group(0)
                 changes.append(book_name)
-                punct_handler = re.sub(r'\s([' + string.punctuation +'])', r'SPT\1', source_content[0])
-                punct_handler = re.sub(r'([' + string.punctuation +'])\s', r'\1SPT', punct_handler)
-                punct_handler = re.sub(r'([' + string.punctuation +'])', r' \1 ', punct_handler)
+                source_split = (source_content[0].strip()).split('\c 1')
+                header_text = source_split[0]
+                text = '\c 1' + source_split[1]
+                punct_handler = re.sub(r' ([' + punctuations +'])', r'SPT\1', text)
+                punct_handler = re.sub(r'([' + punctuations +']) ', r'\1SPT', punct_handler)
+                punct_handler = re.sub('-', 'hyphenmark', punct_handler)
+                punct_handler = re.sub('SPT', ' SPT ', punct_handler)
+                punct_handler = re.sub(r'([' + punctuations +'])', r' \1 ', punct_handler)
+                punct_handler = re.sub('  ', ' ', punct_handler)
                 for line in punct_handler.split("\n"):
                     line_words = nltk.word_tokenize(line)
                     new_line_words = []
                     for word in line_words:
-                        if word not in tokens:
-                            untranslated.append(word) 
+                        if word.isdigit() or word in punctuations or word == 'SPT':
+                            new_line_words.append(tokens.get(word, word))
                         elif not pattern_match.match(word): # TODO: Delete tag_check
                             new_line_words.append(tokens.get(word, ">>>"+str(word)+"<<<"))
+                            untranslated.append(word)
+                        elif not pattern_match.match(word) and word not in tokens:
+                            untranslated.append(word)
                         else:
                             new_line_words.append(tokens.get(word, word))
                         
@@ -1162,8 +1171,15 @@ def translations():
                     out_text_lines.append(out_line)
                 out_text = "\n".join(out_text_lines)
                 out_final = re.sub("``", '"', out_text)
-                out_final = re.sub(r'\s([' + string.punctuation + '])\s', r'\1', out_final)
+                out_final = re.sub('hyphenmark', '-', out_final)
+                out_final = re.sub(r'( )?([' + punctuations + '])( )?', r'\2', out_final)
                 out_final = re.sub(r'SPT', ' ', out_final)
+                out_final = re.sub('  ', ' ', out_final)
+                out_final = re.sub('>>>', ' >>>', out_final)
+                out_final = re.sub('<<<', '<<< ', out_final)
+                out_final = re.sub(r' >>>(\d+-\d+)<<< ', r'\1', out_final)
+                out_final = header_text + out_final
+                out_final = out_final.strip()
                 tr["untranslated"] = "\n".join(list(set(untranslated)))
                 tr[book_name] = out_final
             else:
