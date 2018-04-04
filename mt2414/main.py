@@ -702,7 +702,7 @@ def tokenlist():
         token_list = []
         for bk in book_list:
             cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk))
-            cluster_token = cursor. fetchall()
+            cluster_token = cursor.fetchall()
             for ct in cluster_token:
                 token_list.append(ct[0])
         output = set(token_list) - set(token)
@@ -746,7 +746,7 @@ def tokencount():
             for bk in books:
                 token_list = []
                 cursor.execute("SELECT token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk[0]))
-                cluster_token = cursor. fetchall()
+                cluster_token = cursor.fetchall()
                 for ct in cluster_token:
                     token_list.append(ct[0])
                     total_token = len(token_list)
