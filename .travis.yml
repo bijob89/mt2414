@@ -16,6 +16,7 @@ install:
   - pip install pyexcel-xlsx
   - pip install pyexcel-xls
   - pip install pyotp
+  - pip install Flask
   - python setup.py develop
 
 script:
