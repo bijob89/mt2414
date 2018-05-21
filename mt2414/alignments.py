@@ -273,6 +273,8 @@ def generate_greek_lemma(contents):
 
 
 def create_positional_pairs(stemtext, hindi_vc_dict, strong_vc_dict, counter_dict, main_dict):
+    # connection = get_db()
+    # cursor = connection.cursor()
     main_text_list = []
     positional_pairs_list = []
     strongs_pattern = re.compile(r'g\d+')
@@ -283,7 +285,8 @@ def create_positional_pairs(stemtext, hindi_vc_dict, strong_vc_dict, counter_dic
         if items[0] in greek_text_dict:
             full_greek_verse_list = greek_text_dict[items[0]].split(' ')
         if items[0] not in hindi_vc_dict:
-            positional_pairs_list.append('\t'.join(items[0:2]))
+            positional_pairs_list.append('\t'.join(items[0:2]) + '\t-' * 5)
+            # cursor.execute("INSERT INTO alignments (verse_code, word_position, word) VALUES (%s, %s)", (items[0], items[1]))
             continue
         # Check if any greek/strongs is left out. Also re - initialize dicts used in the program
         if items[0] != current_vc:
@@ -315,8 +318,10 @@ def create_positional_pairs(stemtext, hindi_vc_dict, strong_vc_dict, counter_dic
                         morp = mor_lem_dict['morph']
                         length = greek_bible_text_dict[current_vc].count(x_occ)            
                         positional_pairs_list.append(current_vc + '\t' + '-' + '\t' + '-' + '\t' + str(position) + '\t' + sn + '\t' + x_occ + '\t' + '-')
+                        # cursor.execute("INSERT INTO alignments (verse_code, word_position, word, greek_position, strongs, greek_word, confidence) VALUES (%s, %s, %s, %s, %s, %s, %s)", (current_vc, None, None, str(position), sn, x_occ, None))
                     else:
                         positional_pairs_list.append(current_vc + '\t' + '-' + '\t' + '-' + '\t' + str(position) + '\t' + sn + '\t' + x_occ + '\t' + '-')
+                        # cursor.execute("INSERT INTO alignments (verse_code, word_position, word, greek_position, strongs, greek_word, confidence) VALUES (%s, %s, %s, %s, %s, %s, %s)", (current_vc, None, None, str(position), sn, x_occ, None))                        
             current_strongs_list = []
             hindi_dt = hindi_vc_dict[items[0]]
             strong_dt = strong_vc_dict[items[0]]
@@ -330,6 +335,7 @@ def create_positional_pairs(stemtext, hindi_vc_dict, strong_vc_dict, counter_dic
             occurance_dict[items[3]] = 1
         if items[3] == 'NULL' or items[3] in punctuations:
             positional_pairs_list.append('\t'.join(items[0:3]) + '\t-' * 4)
+            # cursor.execute("INSERT INTO alignments (verse_code, word_position, word) VALUES (%s, %s, %s)", (items[0], items[1], items[2]))
         else:
             confidence_dict = {}
             if items[3] in hindi_dt and items[3] in strong_dt:
@@ -422,7 +428,10 @@ def create_positional_pairs(stemtext, hindi_vc_dict, strong_vc_dict, counter_dic
                 length = greek_bible_text_dict[items[0]].count(grk)
                 greek_lenght.append(str(length))
             positional_pairs_list.append('\t'.join(items[0:3]) + '\t' + ','.join(pos_list) + '\t' + ','.join(sn_list) +  '\t' + ','.join(x_content_list) + '\t' + ','.join(conf_list))
-    return '\n'.join(positional_pairs_list)
+            # cursor.execute("INSERT INTO alignments (verse_code, word_position, word, greek_position, strongs, greek_word, confidence) VALUES (%s, %s, %s, %s, %s, %s, %s)", (items[0], items[1], items[2], ','.join(pos_list), ','.join(sn_list), join(x_content_list), ','.join(conf_list)))
+    # cursor.close()
+    # connection.commit()
+    return positional_pairs_list
 
 def aligned_texts(main_dict):
     hindi_itl = (open(os.getcwd() + '/externalfiles/hindi_interlinear.txt', 'r').read().strip()).split('\n')
@@ -430,19 +439,17 @@ def aligned_texts(main_dict):
     hindi_vc_text = (open(os.getcwd() + '/externalfiles/vc_hindi_text.txt', 'r').read().strip()).split('\n')
     stem_text = (open(os.getcwd() + '/externalfiles/stemmed_vc_text.txt', 'r').read().strip()).split('\n')
     hindi_itl_vc = [hindi_vc_text[i].split('\t')[0] + '\t' + hindi_itl[i]  for i in range(len(hindi_vc_text))]
-    print('First')
     verse_code_list = [item.split('\t')[0] for item in hindi_itl_vc]
     strong_itl_vc = [hindi_vc_text[i].split('\t')[0] + '\t' + strong_itl[i]  for i in range(len(hindi_vc_text))]
     generate_greek_text(verse_code_list)
-    print('Second')
     occurance(stem_text)
     generate_counters()
     hindi_vc_dict = word_strong_vc_dict(hindi_itl_vc)
     strong_vc_dict = word_strong_vc_dict(strong_itl_vc)
     # greek_strongs_vc = (open('greek_strongs_text.txt', 'r').read().strip().split('\n'))
     counter_dict = generate_counters()
-    print('Also here')
     json_file = create_positional_pairs(stem_text, hindi_vc_dict, strong_vc_dict, counter_dict, main_dict)
-    tofile = open('posi.output.txt', 'w')
-    tofile.write(json_file)
-    tofile.close()
+    return json_file
+    # tofile = open('posi.output.txt', 'w')
+    # tofile.write(json_file)
+    # tofile.close()

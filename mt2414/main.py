@@ -1252,5 +1252,10 @@ def create_alignments():
     book_contents = cursor.fetchall()
     greek_lemma = generate_greek_lemma(book_contents)
     print('Done')
-    aligned_texts(greek_lemma)
+    alignments = aligned_texts(greek_lemma)
+    for line in alignments:
+        a, b, c, d, e, f, g = line.split('\t')
+        cursor.execute("INSERT INTO alignments (verse_code, word_position, word, greek_position, strongs, greek_word, confidence, source_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (a, b, c, d, e, f, g, source_id))
+    cursor.close()
+    connection.commit()
     return '{"success":true, "message":"Created Successfully"}'
