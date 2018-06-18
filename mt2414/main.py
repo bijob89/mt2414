@@ -373,53 +373,44 @@ def sources():
                 return '{"success":false, "message":"Select language and version"}'
             connection = get_db()
             cursor = connection.cursor()
+            changes = []
+            books = []
+            cursor.execute("SELECT book_name, content, revision_num from sourcetexts WHERE source_id = %s", (source_id,))
+            all_books = cursor.fetchall()
+            for i in range(0, len(all_books)):
+                books.append(all_books[i][0])
             convert_file = (read_file.decode('utf-8').replace('\r', ''))
             book_name_check = re.search('(?<=\id )\w{3}', convert_file)
             if not book_name_check:
                 logging.warning('User: \'' + str(email_id) + '(' + str(user_role) + ')\'. File content \'' + str(content) + '\' in incorrect format.')
                 return '{"success":false, "message":"Upload Failed. File content in incorrect format."}'
             book_name = book_name_check.group(0)
-            cursor.execute("SELECT language FROM sources WHERE id=%s", (source_id,))
-            language = cursor.fetchone()[0]
-            if language == 'grk':
-                cursor.execute("INSERT INTO sourcetext(book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, convert_file, source_id, '1'))
-                cursor.close()
-                connection.commit()
-                return '{"success":true, "message":"Greek files uploaded"}'
-            else:
-                changes = []
-                books = []
-                cursor.execute("SELECT book_name, content, revision_num from sourcetexts WHERE source_id = %s", (source_id,))
-                all_books = cursor.fetchall()
+            text_file = re.sub(r'(\\rem.*)', '', convert_file)
+            text_file = re.sub('(\\\\id .*)', '\\id ' + str(book_name), text_file)
+            if book_name in books:
+                count = 0
+                count1 = 0
                 for i in range(0, len(all_books)):
-                    books.append(all_books[i][0])
-                
-                text_file = re.sub(r'(\\rem.*)', '', convert_file)
-                text_file = re.sub('(\\\\id .*)', '\\id ' + str(book_name), text_file)
-                if book_name in books:
-                    count = 0
-                    count1 = 0
-                    for i in range(0, len(all_books)):
-                        if all_books[i][1] != text_file and book_name == all_books[i][0]:
-                            count = count + 1
-                        elif all_books[i][1] == text_file and book_name == all_books[i][0]:
-                            count1 = all_books[i][2]
-                    if count1 == 0 and count != 0:
-                        revision_num = count + 1
-                        cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
-                        changes.append(book_name)
-                        logging.warning('User: \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded revised version of \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
-                        token_set = tokenise(text_file)
-                        for t in token_set:
-                            cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
-                elif book_name not in books:
-                    revision_num = 1
+                    if all_books[i][1] != text_file and book_name == all_books[i][0]:
+                        count = count + 1
+                    elif all_books[i][1] == text_file and book_name == all_books[i][0]:
+                        count1 = all_books[i][2]
+                if count1 == 0 and count != 0:
+                    revision_num = count + 1
                     cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
-                    logging.warning('User: \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded new book \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
                     changes.append(book_name)
+                    logging.warning('User: \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded revised version of \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
                     token_set = tokenise(text_file)
                     for t in token_set:
                         cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
+            elif book_name not in books:
+                revision_num = 1
+                cursor.execute("INSERT INTO sourcetexts (book_name, content, source_id, revision_num) VALUES (%s, %s, %s, %s)", (book_name, text_file, source_id, revision_num))
+                logging.warning('User: \'' + str(email_id) + '(' + str(user_role) + ')\' uploaded new book \'' + str(book_name) + '\'. Source Id: ' + str(source_id))
+                changes.append(book_name)
+                token_set = tokenise(text_file)
+                for t in token_set:
+                    cursor.execute("INSERT INTO cluster (token, book_name, revision_num, source_id) VALUES (%s, %s, %s, %s)", (t.decode("utf-8"), book_name, revision_num, source_id))
         else:
             return '{"success":false, "message":"You are not authorized to view this page. Contact Administrator"}'
     else:
