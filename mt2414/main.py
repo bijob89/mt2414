@@ -59,7 +59,18 @@ mysql_database = os.environ.get("MTV2_DATABASE", "postgres")
 
 conn = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
 
-books = {"1": "GEN", "2": "EXO", "3": "LEV", "4": "NUM", "5": "DEU", "6": "JOS", "7": "JDG", "8": "RUT", "9": "1SA", "10": "2SA", "11": "1KI", "12": "2KI", "13": "1CH", "14": "2CH", "15": "EZR", "16": "NEH", "17": "EST", "18": "JOB", "19": "PSA", "20": "PRO", "21": "ECC", "22": "SNG", "23": "ISA", "24": "JER", "25": "LAM", "26": "EZK", "27": "DAN", "28": "HOS", "29": "JOL", "30": "AMO", "31": "OBA", "32": "JON", "33": "MIC", "34": "NAM", "35": "HAB", "36": "ZEP", "37": "HAG", "38": "ZEC", "39": "MAL", "40": "MAT", "41": "MRK", "42": "LUK", "43": "JHN", "44": "ACT", "45": "ROM", "46": "1CO", "47": "2CO", "48": "GAL", "49": "EPH", "50": "PHP", "51": "COL", "52": "1TH", "53": "2TH", "54": "1TI", "55": "2TI", "56": "TIT", "57": "PHM", "58": "HEB", "59": "JAS", "60": "1PE", "61": "2PE", "62": "1JN", "63": "2JN", "64": "3JN", "65": "JUD", "66": "REV"}
+books = {
+    "1": "GEN", "2": "EXO", "3": "LEV", "4": "NUM", "5": "DEU", "6": "JOS", "7": "JDG", 
+    "8": "RUT", "9": "1SA", "10": "2SA", "11": "1KI", "12": "2KI", "13": "1CH", "14": "2CH", 
+    "15": "EZR", "16": "NEH", "17": "EST", "18": "JOB", "19": "PSA", "20": "PRO", "21": "ECC", 
+    "22": "SNG", "23": "ISA", "24": "JER", "25": "LAM", "26": "EZK", "27": "DAN", "28": "HOS", 
+    "29": "JOL", "30": "AMO", "31": "OBA", "32": "JON", "33": "MIC", "34": "NAM", "35": "HAB", 
+    "36": "ZEP", "37": "HAG", "38": "ZEC", "39": "MAL", "40": "MAT", "41": "MRK", "42": "LUK", 
+    "43": "JHN", "44": "ACT", "45": "ROM", "46": "1CO", "47": "2CO", "48": "GAL", "49": "EPH", 
+    "50": "PHP", "51": "COL", "52": "1TH", "53": "2TH", "54": "1TI", "55": "2TI", "56": "TIT", 
+    "57": "PHM", "58": "HEB", "59": "JAS", "60": "1PE", "61": "2PE", "62": "1JN", "63": "2JN", 
+    "64": "3JN", "65": "JUD", "66": "REV"
+    }
 books_inverse = {v:k for k,v in books.items()} 
 
 def get_db():                                                                      #--------------To open database connection-------------------#
@@ -69,21 +80,6 @@ def get_db():                                                                   
     if not hasattr(g, 'db'):
         g.db = psycopg2.connect(dbname=postgres_database, user=postgres_user, password=postgres_password, host=postgres_host, port=postgres_port)
     return g.db
-
-def digit_length_check(num):
-    num = str(num)
-    if len(num) == 1:
-        return '00' + num
-    else:
-        return '0' + num
-
-def ref_parser(bcv):
-    bcv = str(bcv)
-    length = len(bcv)
-    V = bcv[-3:]
-    C = bcv[-6:-3]
-    B = bcv[-length:-6]
-    return (B,C,V)
 
 @app.teardown_appcontext                                              #-----------------Close database connection----------------#
 def close_db(error):
@@ -1247,10 +1243,12 @@ def corrections():
 def suggestions():
     return '{}\n'
 
-@app.route('/v2/alignments/view', methods=["GET", "POST"])
-def getalignments():
+@app.route('/v2/alignments/<bcv>', methods=["GET"])
+def getalignments(bcv):
+    '''
+    Returns list of positional pairs, list of Hindi words, list of strong numbers for the bcv queried. 
+    '''
     cursor = conn.cursor()
-    bcv = request.form["bcv"]
     hindi_list = []
     position_list = []
     cursor.execute("SELECT word FROM hindi_word_position where bcv=%s", (bcv,))
@@ -1268,21 +1266,35 @@ def getalignments():
 
 @app.route('/v2/alignments/books', methods=["GET"])
 def getbooks():
+    '''
+    Returns a list of books whose alignments are available
+    '''
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT(bcv) FROM giza_linkage_grk2hin")
     rst = cursor.fetchall()
     book_set = set(x[0] for x in rst)
     all_books = []
-    for item in sorted(books):
-        all_books.append(books[str(item[0:2])])
+    for item in sorted(book_set):
+        bcv = str(item)
+        length = len(bcv)
+        book_code = bcv[-length:-6]
+        book_name = books[book_code]
+        if book_name not in all_books:
+            all_books.append(book_name)
     return jsonify({"books":all_books})
 
-@app.route('/v2/search/chapternumbers', methods=["GET", "POST"])
-def getchapternumbers():
+@app.route('/v2/alignments/chapternumbers/<bookname>', methods=["GET"])
+def getchapternumbers(bookname):
+    '''
+    Returns a list of chapter number of the book queried.
+    '''
     cursor = conn.cursor()
-    bookname = request.form["bookname"]
-    bookcode = books_inverse[bookname]
-    prev = (int(bookcode) - 1) * 1000000
+    bookname = bookname.upper()
+    if bookname not in books_inverse:
+        return 'Invalid book name'
+    else:
+        bookcode = books_inverse[bookname]
+    prev = int(bookcode) * 1000000
     nxt = (int(bookcode) + 1) * 1000000
     cursor.execute("SELECT bcv FROM giza_linkage_grk2hin WHERE bcv > %s and bcv < %s", (prev, nxt))
     rst = cursor.fetchall()
@@ -1290,20 +1302,24 @@ def getchapternumbers():
     if rst != []:
         for bcv in rst:
             temp_str = str(bcv[0])
-            chapter_num = temp_str[2:5]
+            chapter_num = temp_str[-6:-3]
             if int(chapter_num) not in temp_list:
                 temp_list.append(int(chapter_num))
     return jsonify({"chapter_numbers": sorted(temp_list)})
 
-@app.route('/v2/search/versenumbers', methods=["GET", "POST"])
-def getversenumbers():
+@app.route('/v2/alignments/versenumbers/<bookname>/<chapternumber>', methods=["GET"])
+def getversenumbers(bookname, chapternumber):
+    '''
+    Returns a list containing the verse numbers for the particular chapter number of a book.
+    '''
     cursor = conn.cursor()
-    chapternumber = 5
-    bookname = request.form["bookname"]
-    chapternumber = request.form["chapternumber"]
-    bookcode = books_inverse[bookname]
-    prev = int(str(bookcode) + digit_length_check(int(chapternumber) - 1) + '000')
-    nxt = int(str(bookcode) + digit_length_check(int(chapternumber) + 1) + '000')
+    bookname = bookname.upper()
+    if bookname not in books_inverse:
+        return 'Invalid book name'
+    else:
+        bookcode = books_inverse[bookname]
+    prev = int(str(bookcode) + str(int(chapternumber)).zfill(3) + '000')
+    nxt = int(str(bookcode) + str(int(chapternumber) + 1).zfill(3) + '000')
     cursor.execute("SELECT bcv FROM giza_linkage_grk2hin WHERE bcv > %s and bcv < %s", (prev, nxt))
     rst = cursor.fetchall()
     temp_list = []
@@ -1315,8 +1331,12 @@ def getversenumbers():
                 temp_list.append(int(verse_num))
     return jsonify({"verse_numbers": sorted(temp_list)})
 
-@app.route('/v2/alignments/edit', methods=["GET", "POST"])
+@app.route('/v2/alignments', methods=["POST"])
 def editalignments():
+    '''
+    Recieves BCV and list of positional pairs as input. The old positional pairs
+    are deleted and the new ones are inserted into the database.
+    '''
     req = request.get_json(True)
     bcv = req["bcv"]
     position_pairs = req["positional_pairs"]
