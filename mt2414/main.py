@@ -26,13 +26,15 @@ import pyotp
 import pyexcel
 import nltk
 import flask
-from flask import Flask, request, session, redirect
+from flask import Flask, request, session, redirect, jsonify
 from flask import g
 from flask_cors import CORS, cross_origin
 import jwt
 import requests
 import scrypt
 import psycopg2
+import pymysql
+# from .alignments import *
 
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -47,6 +49,29 @@ postgres_port = os.environ.get("MT2414_POSTGRES_PORT", "5432")
 postgres_user = os.environ.get("MT2414_POSTGRES_USER", "postgres")
 postgres_password = os.environ.get("MT2414_POSTGRES_PASSWORD", "secret")
 postgres_database = os.environ.get("MT2414_POSTGRES_DATABASE", "postgres")
+host_api_url = os.environ.get("MT2414_HOST_API_URL")
+host_ui_url = os.environ.get("MT2414_HOST_UI_URL")
+mysql_host = os.environ.get("MTV2_HOST", "localhost")
+mysql_port = int(os.environ.get("MTV2_PORT", '3306'))
+mysql_user = os.environ.get("MTV2_USER", "mysql")
+mysql_password = os.environ.get("MTV2_PASSWORD", "secret")
+mysql_database = os.environ.get("MTV2_DATABASE", "postgres")
+
+conn = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+
+books = {
+    "1": "GEN", "2": "EXO", "3": "LEV", "4": "NUM", "5": "DEU", "6": "JOS", "7": "JDG", 
+    "8": "RUT", "9": "1SA", "10": "2SA", "11": "1KI", "12": "2KI", "13": "1CH", "14": "2CH", 
+    "15": "EZR", "16": "NEH", "17": "EST", "18": "JOB", "19": "PSA", "20": "PRO", "21": "ECC", 
+    "22": "SNG", "23": "ISA", "24": "JER", "25": "LAM", "26": "EZK", "27": "DAN", "28": "HOS", 
+    "29": "JOL", "30": "AMO", "31": "OBA", "32": "JON", "33": "MIC", "34": "NAM", "35": "HAB", 
+    "36": "ZEP", "37": "HAG", "38": "ZEC", "39": "MAL", "40": "MAT", "41": "MRK", "42": "LUK", 
+    "43": "JHN", "44": "ACT", "45": "ROM", "46": "1CO", "47": "2CO", "48": "GAL", "49": "EPH", 
+    "50": "PHP", "51": "COL", "52": "1TH", "53": "2TH", "54": "1TI", "55": "2TI", "56": "TIT", 
+    "57": "PHM", "58": "HEB", "59": "JAS", "60": "1PE", "61": "2PE", "62": "1JN", "63": "2JN", 
+    "64": "3JN", "65": "JUD", "66": "REV"
+    }
+books_inverse = {v:k for k,v in books.items()} 
 
 def get_db():                                                                      #--------------To open database connection-------------------#
     """Opens a new database connection if there is none yet for the
@@ -98,9 +123,9 @@ def new_registration():
     body = '''Hi,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
     You need to confirm your email by opening this link:
 
-    <a href="https://api.mt2414.in/v1/verifications/%s">https://api.mt2414.in/v1/verifications/%s</a>
+    <a href="https://%s/v1/verifications/%s">https://%s/v1/verifications/%s</a>
 
-    <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code, verification_code)
+    <br/><br/>The documentation for accessing the API is available at <a href="https://docs.autographamt.com">https://docs.autographamt.com</a>''' % (host_api_url, verification_code, host_api_url, verification_code)
     payload = {
         "to": {email: ""},
         "from": ["noreply@autographamt.in", "Autographa MT"],
@@ -138,9 +163,9 @@ def reset_password():
         body = '''Hi,<br/><br/>your request for resetting the password has been recieved. <br/>
         Your temporary password is %s. Enter your new password by opening this link:
 
-        <a href="http://autographamt.com/forgotpassword">http://autographamt.com/forgotpassword</a>
+        <a href="https://%s/forgotpassword">https://%s/forgotpassword</a>
 
-        <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code)
+        <br/><br/>The documentation for accessing the API is available at <a href="https://docs.autographamt.com">https://docs.autographamt.com</a>''' % (verification_code, host_ui_url, host_ui_url)
         payload = {
             "to": {email: ""},
             "from": ["noreply@autographamt.in", "AutographaMT"],
@@ -264,7 +289,7 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    return redirect("http://autographamt.com/")
+    return redirect("https://%s/" % (host_ui_url))
 
 @app.route("/v1/createsources", methods=["POST"])                     #--------------For creating new source (admin) -------------------#
 @check_token
@@ -414,12 +439,12 @@ def updatelanguagelist():
         data = json.loads(url.read().decode())
         tr = {}
         for item in data:
-            if "IN" in item["cc"]:
-                tr[item["ang"]] = item["lc"]
+            # if "IN" in item["cc"]:
+            tr[item["ang"]] = item["lc"]
         db_item = pickle.dumps(tr)
         connection = get_db()
         cursor = connection.cursor()
-        cursor.execute("SELECT picklelist FROM targetlanglist")
+        cursor.execute("DELETE FROM targetlanglist")
         cursor.execute("INSERT INTO targetlanglist (picklelist) VALUES (%s)", (db_item,))
         cursor.close()
         connection.commit()
@@ -700,7 +725,7 @@ def tokenlist():
         token_list = []
         for bk in book_list:
             cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk))
-            cluster_token = cursor. fetchall()
+            cluster_token = cursor.fetchall()
             for ct in cluster_token:
                 token_list.append(ct[0])
         output = set(token_list) - set(token)
@@ -744,7 +769,7 @@ def tokencount():
             for bk in books:
                 token_list = []
                 cursor.execute("SELECT token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk[0]))
-                cluster_token = cursor. fetchall()
+                cluster_token = cursor.fetchall()
                 for ct in cluster_token:
                     token_list.append(ct[0])
                     total_token = len(token_list)
@@ -1217,3 +1242,176 @@ def corrections():
 @check_token
 def suggestions():
     return '{}\n'
+
+@app.route('/v2/alignments/<bcv>', methods=["GET"])
+def getalignments(bcv):
+    '''
+    Returns list of positional pairs, list of Hindi words, list of strong numbers for the bcv queried. 
+    '''
+    cursor = conn.cursor()
+    hindi_list = []
+    position_list = []
+    cursor.execute("SELECT word FROM hindi_word_position where bcv=%s", (bcv,))
+    rst = cursor.fetchall()
+    cursor.execute("SELECT verse FROM bcv_strong_text where bcv=%s", (bcv,))
+    rst1 = cursor.fetchall()
+    cursor.execute("SELECT id, s_id FROM giza_linkage_grk2hin WHERE bcv=%s", (bcv,))
+    rst2 = cursor.fetchall()
+    for item in rst:
+        hindi_list.append(item[0])
+    for item in rst2:
+        position_list.append(str(item[0]) + '-' + str(item[1]))
+    greek_list = rst1[0][0].split(' ')
+    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':hindi_list, 'greek':greek_list})
+
+@app.route('/v2/alignments/books', methods=["GET"])
+def getbooks():
+    '''
+    Returns a list of books whose alignments are available
+    '''
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT(bcv) FROM giza_linkage_grk2hin")
+    rst = cursor.fetchall()
+    book_set = set(x[0] for x in rst)
+    all_books = []
+    for item in sorted(book_set):
+        bcv = str(item)
+        length = len(bcv)
+        book_code = bcv[-length:-6]
+        book_name = books[book_code]
+        if book_name not in all_books:
+            all_books.append(book_name)
+    return jsonify({"books":all_books})
+
+@app.route('/v2/alignments/chapternumbers/<bookname>', methods=["GET"])
+def getchapternumbers(bookname):
+    '''
+    Returns a list of chapter number of the book queried.
+    '''
+    cursor = conn.cursor()
+    bookname = bookname.upper()
+    if bookname not in books_inverse:
+        return 'Invalid book name'
+    else:
+        bookcode = books_inverse[bookname]
+    prev = int(bookcode) * 1000000
+    nxt = (int(bookcode) + 1) * 1000000
+    cursor.execute("SELECT bcv FROM giza_linkage_grk2hin WHERE bcv > %s and bcv < %s", (prev, nxt))
+    rst = cursor.fetchall()
+    temp_list = []
+    if rst != []:
+        for bcv in rst:
+            temp_str = str(bcv[0])
+            chapter_num = temp_str[-6:-3]
+            if int(chapter_num) not in temp_list:
+                temp_list.append(int(chapter_num))
+    return jsonify({"chapter_numbers": sorted(temp_list)})
+
+@app.route('/v2/alignments/versenumbers/<bookname>/<chapternumber>', methods=["GET"])
+def getversenumbers(bookname, chapternumber):
+    '''
+    Returns a list containing the verse numbers for the particular chapter number of a book.
+    '''
+    cursor = conn.cursor()
+    bookname = bookname.upper()
+    if bookname not in books_inverse:
+        return 'Invalid book name'
+    else:
+        bookcode = books_inverse[bookname]
+    prev = int(str(bookcode) + str(int(chapternumber)).zfill(3) + '000')
+    nxt = int(str(bookcode) + str(int(chapternumber) + 1).zfill(3) + '000')
+    cursor.execute("SELECT bcv FROM giza_linkage_grk2hin WHERE bcv > %s and bcv < %s", (prev, nxt))
+    rst = cursor.fetchall()
+    temp_list = []
+    if rst != []:
+        for bcv in rst:
+            temp_str = str(bcv[0])
+            verse_num = temp_str[5:]
+            if int(verse_num) not in temp_list:
+                temp_list.append(int(verse_num))
+    return jsonify({"verse_numbers": sorted(temp_list)})
+
+@app.route('/v2/alignments', methods=["POST"])
+def editalignments():
+    '''
+    Recieves BCV and list of positional pairs as input. The old positional pairs
+    are deleted and the new ones are inserted into the database.
+    '''
+    req = request.get_json(True)
+    bcv = req["bcv"]
+    position_pairs = req["positional_pairs"]
+    cursor = conn.cursor()
+    hindi_list = []
+    position_list = []
+    ppr_final_list = []
+    cursor.execute("SELECT word FROM hindi_word_position where bcv=%s", (bcv,))
+    rst = cursor.fetchall()
+    cursor.execute("SELECT verse FROM bcv_strong_text where bcv=%s", (bcv,))
+    rst1 = cursor.fetchall()
+    greek_list = rst1[0][0].split(' ')
+    cursor.execute("SELECT id, s_id FROM giza_linkage_grk2hin WHERE bcv=%s", (bcv,))
+    rst2 = cursor.fetchall()
+    for item in rst:
+        hindi_list.append(item[0])
+    for item in rst2:
+        position_list.append(str(item[0]) + '-' + str(item[1]))
+    cursor.execute("DELETE FROM giza_linkage_grk2hin WHERE bcv = %s", (bcv,))
+    stage0 = list(set(position_pairs) & set(position_list))
+    stage1 = list(set(position_pairs) - set(position_list))
+    hi_counter = ['NULL' for i in range(len(hindi_list))]
+    st_counter = ['NULL' for i in range(len(greek_list))]
+    for it in stage0:
+        it = it.split('-')
+        if it[0] != '255':
+            hi_pos = int(it[0]) - 1
+            hi_counter[hi_pos] = 'IN'
+        if it[1] != '255':
+            st_pos = int(it[1]) - 1
+            st_counter[st_pos] = 'IN'
+    for it1 in stage1:
+        it1 = it1.split('-')
+        if it1[0] != '255':
+            hi_pos1 = int(it1[0]) - 1
+            hi_counter[hi_pos1] = 'IN'
+        if it1[1] != '255':
+            st_pos = int(it1[1]) - 1
+            st_counter[st_pos] = 'IN'
+    for s0 in stage0:
+        hi, st = s0.split('-')
+        if hi != '255':
+            hi_pos = int(hi) - 1
+        if st != '255':
+            st_pos = int(st) - 1
+        if hi == '255':
+            ppr_final_list.append([bcv, int(hi), 'NULL', int(st), greek_list[st_pos], 1, 0])
+        elif st == '255':
+            ppr_final_list.append([bcv, int(hi), hindi_list[hi_pos], int(st), 'NULL', 1, 0])
+        else:
+            ppr_final_list.append([bcv, int(hi), hindi_list[hi_pos], int(st), greek_list[st_pos], 1, 0])
+    for s0 in stage1:
+        hi, st = s0.split('-')
+        if hi != '255':
+            hi_pos = int(hi) - 1
+        if st != '255':
+            st_pos = int(st) - 1
+        if hi == '255':
+            ppr_final_list.append([bcv, int(hi), 'NULL', int(st), greek_list[st_pos], 1, 1])
+        elif st == '255':
+            ppr_final_list.append([bcv, int(hi), hindi_list[hi_pos], int(st), 'NULL', 1, 1])
+        else:
+            ppr_final_list.append([bcv, int(hi), hindi_list[hi_pos], int(st), greek_list[st_pos], 1, 1])
+    for l in range(len(hi_counter)):
+        rem_hi = hi_counter[l]
+        if rem_hi == 'NULL':
+            ppr_final_list.append([bcv, l + 1, hindi_list[l], 255, 'NULL', 0, 1])
+    for li in range(len(st_counter)):
+        rem_st = st_counter[li]
+        if rem_st == 'NULL':
+            ppr_final_list.append([bcv, 255, 'NULL', li + 1, greek_list[li], 0, 1 ])
+    for ppr in ppr_final_list:
+        cursor.execute("INSERT INTO giza_linkage_grk2hin (bcv, id, word, s_id, strongs, confidence, stage \
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)", (ppr[0], ppr[1], ppr[2], ppr[3], ppr[4], ppr[5], ppr[6]))
+
+    conn.commit()
+    cursor.close()
+    return 'Saved'
