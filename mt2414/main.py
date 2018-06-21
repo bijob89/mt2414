@@ -1262,6 +1262,7 @@ def getalignments(bcv):
     for item in rst2:
         position_list.append(str(item[0]) + '-' + str(item[1]))
     greek_list = rst1[0][0].split(' ')
+    cursor.close()
     return jsonify({'positionalpairs':sorted(position_list), 'hinditext':hindi_list, 'greek':greek_list})
 
 @app.route('/v2/alignments/books', methods=["GET"])
@@ -1281,6 +1282,7 @@ def getbooks():
         book_name = books[book_code]
         if book_name not in all_books:
             all_books.append(book_name)
+    cursor.close()
     return jsonify({"books":all_books})
 
 @app.route('/v2/alignments/chapternumbers/<bookname>', methods=["GET"])
@@ -1305,6 +1307,7 @@ def getchapternumbers(bookname):
             chapter_num = temp_str[-6:-3]
             if int(chapter_num) not in temp_list:
                 temp_list.append(int(chapter_num))
+    cursor.close()
     return jsonify({"chapter_numbers": sorted(temp_list)})
 
 @app.route('/v2/alignments/versenumbers/<bookname>/<chapternumber>', methods=["GET"])
@@ -1329,6 +1332,7 @@ def getversenumbers(bookname, chapternumber):
             verse_num = temp_str[5:]
             if int(verse_num) not in temp_list:
                 temp_list.append(int(verse_num))
+    cursor.close()
     return jsonify({"verse_numbers": sorted(temp_list)})
 
 @app.route('/v2/alignments', methods=["POST"])
