@@ -1254,21 +1254,46 @@ def getalignments(bcv):
     '''
     connection = connect_db()
     cursor = connection.cursor()
+    tablename = 'grk_hin_alignment'
     hindi_list = []
     position_list = []
-    cursor.execute("SELECT word FROM hindi_word_position where bcv=%s", (bcv,))
-    rst = cursor.fetchall()
-    cursor.execute("SELECT verse FROM bcv_strong_text where bcv=%s", (bcv,))
-    rst1 = cursor.fetchall()
-    cursor.execute("SELECT id, s_id FROM giza_linkage_grk2hin WHERE bcv=%s", (bcv,))
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid_rst = cursor.fetchone()
+    if lid_rst:
+        lid = lid_rst[0]
+    cursor.execute("SELECT verse FROM lid_hindi_text where lid=%s", (lid,))
+    rst = cursor.fetchone()
+    hindi_list = rst[0].split(' ')
+    cursor.execute("SELECT verse FROM lid_strong_text where lid=%s", (lid,))
+    rst1 = cursor.fetchone()
+    greek_list = rst1[0].split(' ')
+    cursor.execute("SELECT source_wordID, target_wordID FROM " + tablename + " WHERE source_wordID \
+     LIKE  '" + str(lid) + "\_%'")
     rst2 = cursor.fetchall()
-    for item in rst:
-        hindi_list.append(item[0])
-    for item in rst2:
-        position_list.append(str(item[0]) + '-' + str(item[1]))
-    greek_list = rst1[0][0].split(' ')
+    for items in rst2:
+        strong_pos = items[0].split('_')[1]
+        hindi_pos = items[1].split('_')[1]
+        position_list.append(hindi_pos + '-' + strong_pos)
     cursor.close()
     return jsonify({'positionalpairs':sorted(position_list), 'hinditext':hindi_list, 'greek':greek_list})
+
+def lid_to_bcv(num_list):
+    '''
+    Recieves a list of Lid's and returns a BCV list.
+    '''
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT lid, bcv FROM bcv_lid_map")
+    rst = cursor.fetchall()
+    lid_dict = {}
+    bcv_list = []
+    for k,v in rst:
+        lid_dict[k] = v
+    for n in num_list:
+        bcv = lid_dict[n]
+        bcv_list.append(bcv)
+    cursor.close()
+    return bcv_list
 
 @app.route('/v2/alignments/books', methods=["GET"])
 def getbooks():
@@ -1277,11 +1302,24 @@ def getbooks():
     '''
     connection = connect_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT DISTINCT(bcv) FROM giza_linkage_grk2hin")
+    tablename = 'grk_hin_alignment'
+    cursor.execute("SELECT lid, bcv FROM bcv_lid_map")
+    rst_num = cursor.fetchall()
+    lid_dict = {}
+    for k,v in rst_num:
+        lid_dict[k] = v
+    cursor.execute("SELECT DISTINCT(lid) FROM " + tablename + "")
     rst = cursor.fetchall()
-    book_set = set(x[0] for x in rst)
+    if rst != []:
+        lid_list  = []
+        for l in rst:
+            if l[0] not in lid_list:
+                lid_list.append(l[0])
+    else:
+        return 'No Data'
+    bcv_list = lid_to_bcv(lid_list)
     all_books = []
-    for item in sorted(book_set):
+    for item in sorted(bcv_list):
         bcv = str(item)
         length = len(bcv)
         book_code = bcv[-length:-6]
@@ -1303,9 +1341,10 @@ def getchapternumbers(bookname):
         return 'Invalid book name'
     else:
         bookcode = books_inverse[bookname]
+    
     prev = int(bookcode) * 1000000
     nxt = (int(bookcode) + 1) * 1000000
-    cursor.execute("SELECT bcv FROM giza_linkage_grk2hin WHERE bcv > %s and bcv < %s", (prev, nxt))
+    cursor.execute("SELECT bcv FROM bcv_lid_map WHERE bcv > %s and bcv < %s", (prev, nxt))
     rst = cursor.fetchall()
     temp_list = []
     if rst != []:
@@ -1331,7 +1370,7 @@ def getversenumbers(bookname, chapternumber):
         bookcode = books_inverse[bookname]
     prev = int(str(bookcode) + str(int(chapternumber)).zfill(3) + '000')
     nxt = int(str(bookcode) + str(int(chapternumber) + 1).zfill(3) + '000')
-    cursor.execute("SELECT bcv FROM giza_linkage_grk2hin WHERE bcv > %s and bcv < %s", (prev, nxt))
+    cursor.execute("SELECT bcv FROM bcv_lid_map WHERE bcv > %s and bcv < %s", (prev, nxt))
     rst = cursor.fetchall()
     temp_list = []
     if rst != []:
