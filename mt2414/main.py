@@ -1393,77 +1393,59 @@ def editalignments():
     position_pairs = req["positional_pairs"]
     connection = connect_db()
     cursor = connection.cursor()
-    hindi_list = []
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid_rst = cursor.fetchone()
+    if lid_rst:
+        lid = lid_rst[0]
+    tablename = 'grk_hin_alignment'
     position_list = []
     ppr_final_list = []
-    cursor.execute("SELECT word FROM hindi_word_position where bcv=%s", (bcv,))
-    rst = cursor.fetchall()
-    cursor.execute("SELECT verse FROM bcv_strong_text where bcv=%s", (bcv,))
-    rst1 = cursor.fetchall()
-    greek_list = rst1[0][0].split(' ')
-    cursor.execute("SELECT id, s_id FROM giza_linkage_grk2hin WHERE bcv=%s", (bcv,))
+    cursor.execute("SELECT verse FROM lid_hindi_text where lid=%s", (lid,))
+    rst_hin = cursor.fetchone()
+    hindi_list = rst_hin[0].split(' ')
+    cursor.execute("SELECT verse FROM lid_strong_text where lid=%s", (lid,))
+    rst_grk = cursor.fetchone()
+    greek_list = rst_grk[0].split(' ')
+    cursor.execute("SELECT target_wordID, source_wordID FROM " + tablename + " WHERE lid=%s", (lid,))
     rst2 = cursor.fetchall()
-    for item in rst:
-        hindi_list.append(item[0])
     for item in rst2:
-        position_list.append(str(item[0]) + '-' + str(item[1]))
-    cursor.execute("DELETE FROM giza_linkage_grk2hin WHERE bcv = %s", (bcv,))
-    stage0 = list(set(position_pairs) & set(position_list))
-    stage1 = list(set(position_pairs) - set(position_list))
+        position_list.append(item[0].split('_')[1] + '-' + item[1].split('_')[1])
+    cursor.execute("DELETE FROM " + tablename + " WHERE lid = %s", (lid,))
+    stage = list(set(position_pairs + position_list))
     hi_counter = ['NULL' for i in range(len(hindi_list))]
     st_counter = ['NULL' for i in range(len(greek_list))]
-    for it in stage0:
+    for it in stage:
         it = it.split('-')
-        if it[0] != '255':
-            hi_pos = int(it[0]) - 1
+        s_wordid = it[1]
+        t_wordid = it[0]
+        if s_wordid != '255':
+            st_pos = int(s_wordid) - 1
+            st_counter[st_pos] = 'IN'
+            source_wordid = str(lid) + '_' + s_wordid
+        else:
+            source_wordid = str(lid) + '_' + s_wordid
+        if t_wordid != '255':
+            hi_pos = int(t_wordid) - 1
             hi_counter[hi_pos] = 'IN'
-        if it[1] != '255':
-            st_pos = int(it[1]) - 1
-            st_counter[st_pos] = 'IN'
-    for it1 in stage1:
-        it1 = it1.split('-')
-        if it1[0] != '255':
-            hi_pos1 = int(it1[0]) - 1
-            hi_counter[hi_pos1] = 'IN'
-        if it1[1] != '255':
-            st_pos = int(it1[1]) - 1
-            st_counter[st_pos] = 'IN'
-    for s0 in stage0:
-        hi, st = s0.split('-')
-        if hi != '255':
-            hi_pos = int(hi) - 1
-        if st != '255':
-            st_pos = int(st) - 1
-        if hi == '255':
-            ppr_final_list.append([bcv, int(hi), 'NULL', int(st), greek_list[st_pos], 1, 0])
-        elif st == '255':
-            ppr_final_list.append([bcv, int(hi), hindi_list[hi_pos], int(st), 'NULL', 1, 0])
+            target_wordid = str(lid) + '_' + t_wordid
         else:
-            ppr_final_list.append([bcv, int(hi), hindi_list[hi_pos], int(st), greek_list[st_pos], 1, 0])
-    for s0 in stage1:
-        hi, st = s0.split('-')
-        if hi != '255':
-            hi_pos = int(hi) - 1
-        if st != '255':
-            st_pos = int(st) - 1
-        if hi == '255':
-            ppr_final_list.append([bcv, int(hi), 'NULL', int(st), greek_list[st_pos], 1, 1])
-        elif st == '255':
-            ppr_final_list.append([bcv, int(hi), hindi_list[hi_pos], int(st), 'NULL', 1, 1])
-        else:
-            ppr_final_list.append([bcv, int(hi), hindi_list[hi_pos], int(st), greek_list[st_pos], 1, 1])
+            target_wordid = str(lid) + '_' + t_wordid
+        ppr_final_list.append([lid, source_wordid, target_wordid, 1])
     for l in range(len(hi_counter)):
         rem_hi = hi_counter[l]
         if rem_hi == 'NULL':
-            ppr_final_list.append([bcv, l + 1, hindi_list[l], 255, 'NULL', 0, 1])
+            s_word = str(lid) + '_255'
+            t_word = str(lid) + '_' + str(l + 1)
+            ppr_final_list.append([lid, s_word, t_word, 1])
     for li in range(len(st_counter)):
         rem_st = st_counter[li]
         if rem_st == 'NULL':
-            ppr_final_list.append([bcv, 255, 'NULL', li + 1, greek_list[li], 0, 1 ])
+            s_word = str(lid) + '_' + str(li + 1)
+            t_word = str(lid) + '_255'
+            ppr_final_list.append([lid, s_word, t_word, 1])
     for ppr in ppr_final_list:
-        cursor.execute("INSERT INTO giza_linkage_grk2hin (bcv, id, word, s_id, strongs, confidence, stage \
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s)", (ppr[0], ppr[1], ppr[2], ppr[3], ppr[4], ppr[5], ppr[6]))
-
+        cursor.execute("INSERT INTO " + tablename + " (lid,  source_wordID, target_wordID, corrected\
+        ) VALUES (%s, %s, %s, %s)", (ppr[0], ppr[1], ppr[2], ppr[3]))
     connection.commit()
     cursor.close()
     return 'Saved'
@@ -1488,7 +1470,10 @@ def getlexicons(strong):
         greek_word = rst[2]
         transliteration = rst[3]
         definition = rst[4]
+        englishword = rst[6]
     else:
         return 'No information available'
     cursor.close()
-    return jsonify({"strongs":strongs, "pronunciation":pronunciation, "greek_word":greek_word, "transliteration":transliteration, "definition":definition})
+    return jsonify({"strongs":strongs, "pronunciation":pronunciation, "greek_word":greek_word, \
+                "transliteration":transliteration, "definition":definition, "englishword":englishword})
+
