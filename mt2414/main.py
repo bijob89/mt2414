@@ -34,8 +34,6 @@ import requests
 import scrypt
 import psycopg2
 import pymysql
-# from .alignments import *
-
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -57,8 +55,6 @@ mysql_user = os.environ.get("MTV2_USER", "mysql")
 mysql_password = os.environ.get("MTV2_PASSWORD", "secret")
 mysql_database = os.environ.get("MTV2_DATABASE", "postgres")
 
-conn = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
-
 books = {
     "1": "GEN", "2": "EXO", "3": "LEV", "4": "NUM", "5": "DEU", "6": "JOS", "7": "JDG", 
     "8": "RUT", "9": "1SA", "10": "2SA", "11": "1KI", "12": "2KI", "13": "1CH", "14": "2CH", 
@@ -72,6 +68,14 @@ books = {
     "64": "3JN", "65": "JUD", "66": "REV"
     }
 books_inverse = {v:k for k,v in books.items()} 
+
+def connect_db():
+    """
+    Opens a connection with MySQL Database
+    """
+    if not hasattr(g, 'db'):
+        g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+    return g.db
 
 def get_db():                                                                      #--------------To open database connection-------------------#
     """Opens a new database connection if there is none yet for the
@@ -1248,7 +1252,8 @@ def getalignments(bcv):
     '''
     Returns list of positional pairs, list of Hindi words, list of strong numbers for the bcv queried. 
     '''
-    cursor = conn.cursor()
+    connection = connect_db()
+    cursor = connection.cursor()
     hindi_list = []
     position_list = []
     cursor.execute("SELECT word FROM hindi_word_position where bcv=%s", (bcv,))
@@ -1270,7 +1275,8 @@ def getbooks():
     '''
     Returns a list of books whose alignments are available
     '''
-    cursor = conn.cursor()
+    connection = connect_db()
+    cursor = connection.cursor()
     cursor.execute("SELECT DISTINCT(bcv) FROM giza_linkage_grk2hin")
     rst = cursor.fetchall()
     book_set = set(x[0] for x in rst)
@@ -1290,7 +1296,8 @@ def getchapternumbers(bookname):
     '''
     Returns a list of chapter number of the book queried.
     '''
-    cursor = conn.cursor()
+    connection = connect_db()
+    cursor = connection.cursor()
     bookname = bookname.upper()
     if bookname not in books_inverse:
         return 'Invalid book name'
@@ -1315,7 +1322,8 @@ def getversenumbers(bookname, chapternumber):
     '''
     Returns a list containing the verse numbers for the particular chapter number of a book.
     '''
-    cursor = conn.cursor()
+    connection = connect_db()
+    cursor = connection.cursor()
     bookname = bookname.upper()
     if bookname not in books_inverse:
         return 'Invalid book name'
@@ -1344,7 +1352,8 @@ def editalignments():
     req = request.get_json(True)
     bcv = req["bcv"]
     position_pairs = req["positional_pairs"]
-    cursor = conn.cursor()
+    connection = connect_db()
+    cursor = connection.cursor()
     hindi_list = []
     position_list = []
     ppr_final_list = []
@@ -1416,6 +1425,31 @@ def editalignments():
         cursor.execute("INSERT INTO giza_linkage_grk2hin (bcv, id, word, s_id, strongs, confidence, stage \
         ) VALUES (%s, %s, %s, %s, %s, %s, %s)", (ppr[0], ppr[1], ppr[2], ppr[3], ppr[4], ppr[5], ppr[6]))
 
-    conn.commit()
+    connection.commit()
     cursor.close()
     return 'Saved'
+
+@app.route("/v2/lexicons/<strong>", methods=["GET"])
+def getlexicons(strong):
+    """
+    Fetches Lexicon data for the specified strongs.
+    """
+    connection = connect_db()
+    cursor = connection.cursor()
+    strong = strong[1:-1]
+    if not strong.isdigit():
+        return 'Invalid Strong Number\n'
+    else:
+        strong = int(strong)
+    cursor.execute("SELECT * FROM lxn_gre_eng WHERE id = %s", (strong,))
+    rst = cursor.fetchone()
+    if rst:
+        strongs = rst[0]
+        pronunciation = rst[1]
+        greek_word = rst[2]
+        transliteration = rst[3]
+        definition = rst[4]
+    else:
+        return 'No information available'
+    cursor.close()
+    return jsonify({"strongs":strongs, "pronunciation":pronunciation, "greek_word":greek_word, "transliteration":transliteration, "definition":definition})
