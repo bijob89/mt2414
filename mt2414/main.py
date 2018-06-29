@@ -34,6 +34,7 @@ import requests
 import scrypt
 import psycopg2
 import pymysql
+from .FeedbackAligner import FeedbackAligner
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -1459,6 +1460,8 @@ def editalignments():
     for ppr in ppr_final_list:
         cursor.execute("INSERT INTO " + tablename + " (lid,  source_wordID, target_wordID, corrected\
         ) VALUES (%s, %s, %s, %s)", (ppr[0], ppr[1], ppr[2], ppr[3]))
+    fb = FeedbackAligner(connection, 'grk', 'hin')
+    fb.mark_alignment_as_verified(lid)
     connection.commit()
     cursor.close()
     return 'Saved'
@@ -1489,4 +1492,52 @@ def getlexicons(strong):
     cursor.close()
     return jsonify({"strongs":strongs, "pronunciation":pronunciation, "greek_word":greek_word, \
                 "transliteration":transliteration, "definition":definition, "englishword":englishword})
+
+@app.route("/v2/alignments/feedbacks", methods=["POST"])
+def approvefeedbacks():
+    """
+    Inserts the  alignment into the feedback loop up table
+    """
+    req = request.get_json(True)
+    bcv = req["bcv"]
+    positional_pairs = req["positional_pairs"]
+    connection = connect_db()
+    src = 'grk'
+    trg = 'hin'
+    fb = FeedbackAligner(connection, src, trg)
+    cursor = connection.cursor()
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid = cursor.fetchone()[0]
+    cursor.execute("SELECT verse FROM lid_hindi_text WHERE lid=%s", (lid,))
+    trg_list = cursor.fetchone()[0].split(' ')
+    cursor.execute("SELECT verse FROM lid_strong_text WHERE lid=%s", (lid,))
+    src_list = cursor.fetchone()[0].split(' ')
+    feedback_list = []
+    for item in positional_pairs:
+        if '255' not in item:
+            trg_pos, src_pos = item.split('-')
+            trg_pos = int(trg_pos) - 1
+            src_pos = int(src_pos) - 1
+            feedback_list.append((src_list[src_pos], trg_list[trg_pos]))
+    fb.on_approve_feedback(feedback_list)
+    cursor.close()
+    return 'Saved'
+
+@app.route("/v2/alignments/feedbacks/verses", methods=["POST"])
+def updatealignmentverses():
+    """
+    Updates alignment for a verse from the feedback loop up table
+    """
+    req = request.get_json(True)
+    bcv = req["bcv"]
+    connection = connect_db()
+    src = 'grk'
+    trg = 'hin'
+    fb = FeedbackAligner(connection, src, trg)
+    cursor = connection.cursor()
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid = cursor.fetchone()[0]
+    fb.update_alignment_on_verse(str(lid))
+    cursor.close()
+    return 'Saved'
 
