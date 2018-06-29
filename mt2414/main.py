@@ -74,7 +74,8 @@ def connect_db():
     Opens a connection with MySQL Database
     """
     if not hasattr(g, 'db'):
-        g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+        # g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+        g.db = pymysql.connect(host='localhost',database='vachan_engine', user='root', password='11111111', charset='utf8mb4')
     return g.db
 
 def get_db():                                                                      #--------------To open database connection-------------------#
@@ -1255,7 +1256,7 @@ def getalignments(bcv):
     connection = connect_db()
     cursor = connection.cursor()
     tablename = 'grk_hin_alignment'
-    hindi_list = []
+    target_list = []
     position_list = []
     cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
     lid_rst = cursor.fetchone()
@@ -1263,19 +1264,37 @@ def getalignments(bcv):
         lid = lid_rst[0]
     cursor.execute("SELECT verse FROM lid_hindi_text where lid=%s", (lid,))
     rst = cursor.fetchone()
-    hindi_list = rst[0].split(' ')
+    target_list = rst[0].split(' ')
     cursor.execute("SELECT verse FROM lid_strong_text where lid=%s", (lid,))
     rst1 = cursor.fetchone()
     greek_list = rst1[0].split(' ')
-    cursor.execute("SELECT source_wordID, target_wordID FROM " + tablename + " WHERE source_wordID \
+    cursor.execute("SELECT source_wordID, target_wordID, corrected FROM " + tablename + " WHERE source_wordID \
      LIKE  '" + str(lid) + "\_%'")
     rst2 = cursor.fetchall()
+    corrected = []
+    hyphen_check = []
+    for i in range(len(target_list)):
+        target_word = target_list[i]
+        if '-' in target_word:
+            hyphen_check.append(i+1)
     for items in rst2:
         strong_pos = items[0].split('_')[1]
-        hindi_pos = items[1].split('_')[1]
-        position_list.append(hindi_pos + '-' + strong_pos)
+        target_pos = int(items[1].split('_')[1])
+        if int(items[2]) == 0:
+            for num in hyphen_check:
+                if target_pos != 255:
+                    if target_pos > num:
+                        target_pos = target_pos - 1
+                    else:
+                        break
+        position_list.append(str(target_pos) + '-' + strong_pos)
+        corrected.append(items[2])
+    if corrected[0] == 1:
+        status = 'manual'
+    else:
+        status = 'auto'
     cursor.close()
-    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':hindi_list, 'greek':greek_list})
+    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list, 'greek':greek_list, 'status':status})
 
 def lid_to_bcv(num_list):
     '''
@@ -1398,7 +1417,6 @@ def editalignments():
     if lid_rst:
         lid = lid_rst[0]
     tablename = 'grk_hin_alignment'
-    position_list = []
     ppr_final_list = []
     cursor.execute("SELECT verse FROM lid_hindi_text where lid=%s", (lid,))
     rst_hin = cursor.fetchone()
@@ -1406,12 +1424,8 @@ def editalignments():
     cursor.execute("SELECT verse FROM lid_strong_text where lid=%s", (lid,))
     rst_grk = cursor.fetchone()
     greek_list = rst_grk[0].split(' ')
-    cursor.execute("SELECT target_wordID, source_wordID FROM " + tablename + " WHERE lid=%s", (lid,))
-    rst2 = cursor.fetchall()
-    for item in rst2:
-        position_list.append(item[0].split('_')[1] + '-' + item[1].split('_')[1])
     cursor.execute("DELETE FROM " + tablename + " WHERE lid = %s", (lid,))
-    stage = list(set(position_pairs + position_list))
+    stage = list(set(position_pairs))
     hi_counter = ['NULL' for i in range(len(hindi_list))]
     st_counter = ['NULL' for i in range(len(greek_list))]
     for it in stage:
