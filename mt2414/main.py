@@ -74,8 +74,7 @@ def connect_db():
     Opens a connection with MySQL Database
     """
     if not hasattr(g, 'db'):
-        # g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
-        g.db = pymysql.connect(host='localhost',database='vachan_engine', user='root', password='11111111', charset='utf8mb4')
+        g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
     return g.db
 
 def get_db():                                                                      #--------------To open database connection-------------------#
