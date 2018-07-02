@@ -1277,9 +1277,14 @@ def getalignments(bcv):
         target_word = target_list[i]
         if '-' in target_word:
             hyphen_check.append(i+1)
+    src_check = []
+    trg_check = []
     for items in rst2:
         strong_pos = items[0].split('_')[1]
         target_pos = int(items[1].split('_')[1])
+        if '255' not in strong_pos and '255' not in str(target_pos):
+            src_check.append(strong_pos)
+            trg_check.append(str(target_pos))
         if int(items[2]) == 0:
             for num in hyphen_check:
                 if target_pos != 255:
@@ -1289,6 +1294,17 @@ def getalignments(bcv):
                         break
         position_list.append(str(target_pos) + '-' + strong_pos)
         corrected.append(items[2])
+    delete_from_list = []
+    position_list = list(set(position_list))
+    for ppr in position_list:
+        if '255' in ppr:
+            pos_pairs = ppr.split('-')
+            if pos_pairs[0] in trg_check:
+                delete_from_list.append(ppr)
+            if pos_pairs[1] in src_check:
+                delete_from_list.append(ppr)
+    for pos_pair in delete_from_list:
+        position_list.remove(pos_pair)
     if corrected[0] == 1:
         status = 'manual'
     else:
