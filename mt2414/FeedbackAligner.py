@@ -8,7 +8,7 @@ import pymysql
 
 
 class FeedbackAligner:
-	def __init__(db,self,src,trg):
+	def __init__(self,db,src,trg):
 
 		self.db = db
 		
@@ -45,7 +45,7 @@ class FeedbackAligner:
 			cur.execute("ALTER TABLE "+self.FeedbackLookup_table_name+" ADD INDEX target_word_index(target_word)")
 			self.db.commit()
 		
-	def __del__(self):
+	# def __del__(self):
 		
 		self.db.commit()
 		# self.db.close()
@@ -212,7 +212,7 @@ if __name__ == '__main__':
 	                     user="root",         # your username
 	                     password="password",  # your password
 	                     database="itl_db",
-	                     charset='utf8')
+	                     charset='utf8mb4')
 		
 
 	
