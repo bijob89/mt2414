@@ -140,14 +140,16 @@ class FeedbackAligner:
 		# for all source_words get _FeedbackLookup entry
 		# and if entry present in trg_verse, add them to replacement_options
 		replacement_options=[]
+		mapped = []
 		for s_wrd in src_word_list:
 			cur.execute("SELECT target_word FROM "+self.FeedbackLookup_table_name+" WHERE source_word='"+s_wrd[0]+"' ORDER BY confidence_score")
 			for row in cur.fetchall():
 				mapped_trg_word = row[0]
 				flag = False
 				for t_wrd in trg_word_list:
-					if t_wrd[0]==mapped_trg_word:
+					if t_wrd[0]==mapped_trg_word and t_wrd[1] not in mapped:
 						replacement_options.append((s_wrd[1],t_wrd[1]))
+						mapped.append(t_wrd[1])
 						flag=True 
 						break
 				if flag==True:
