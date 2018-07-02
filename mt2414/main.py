@@ -34,6 +34,7 @@ import requests
 import scrypt
 import psycopg2
 import pymysql
+from .FeedbackAligner import FeedbackAligner
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -1276,9 +1277,14 @@ def getalignments(bcv):
         target_word = target_list[i]
         if '-' in target_word:
             hyphen_check.append(i+1)
+    src_check = []
+    trg_check = []
     for items in rst2:
         strong_pos = items[0].split('_')[1]
         target_pos = int(items[1].split('_')[1])
+        if '255' not in strong_pos and '255' not in str(target_pos):
+            src_check.append(strong_pos)
+            trg_check.append(str(target_pos))
         if int(items[2]) == 0:
             for num in hyphen_check:
                 if target_pos != 255:
@@ -1288,6 +1294,17 @@ def getalignments(bcv):
                         break
         position_list.append(str(target_pos) + '-' + strong_pos)
         corrected.append(items[2])
+    delete_from_list = []
+    position_list = list(set(position_list))
+    for ppr in position_list:
+        if '255' in ppr:
+            pos_pairs = ppr.split('-')
+            if pos_pairs[0] in trg_check:
+                delete_from_list.append(ppr)
+            if pos_pairs[1] in src_check:
+                delete_from_list.append(ppr)
+    for pos_pair in delete_from_list:
+        position_list.remove(pos_pair)
     if corrected[0] == 1:
         status = 'manual'
     else:
@@ -1459,6 +1476,8 @@ def editalignments():
     for ppr in ppr_final_list:
         cursor.execute("INSERT INTO " + tablename + " (lid,  source_wordID, target_wordID, corrected\
         ) VALUES (%s, %s, %s, %s)", (ppr[0], ppr[1], ppr[2], ppr[3]))
+    fb = FeedbackAligner(connection, 'grk', 'hin')
+    fb.mark_alignment_as_verified(lid)
     connection.commit()
     cursor.close()
     return 'Saved'
@@ -1489,4 +1508,52 @@ def getlexicons(strong):
     cursor.close()
     return jsonify({"strongs":strongs, "pronunciation":pronunciation, "greek_word":greek_word, \
                 "transliteration":transliteration, "definition":definition, "englishword":englishword})
+
+@app.route("/v2/alignments/feedbacks", methods=["POST"])
+def approvefeedbacks():
+    """
+    Inserts the  alignment into the feedback loop up table
+    """
+    req = request.get_json(True)
+    bcv = req["bcv"]
+    positional_pairs = req["positional_pairs"]
+    connection = connect_db()
+    src = 'grk'
+    trg = 'hin'
+    fb = FeedbackAligner(connection, src, trg)
+    cursor = connection.cursor()
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid = cursor.fetchone()[0]
+    cursor.execute("SELECT verse FROM lid_hindi_text WHERE lid=%s", (lid,))
+    trg_list = cursor.fetchone()[0].split(' ')
+    cursor.execute("SELECT verse FROM lid_strong_text WHERE lid=%s", (lid,))
+    src_list = cursor.fetchone()[0].split(' ')
+    feedback_list = []
+    for item in positional_pairs:
+        if '255' not in item:
+            trg_pos, src_pos = item.split('-')
+            trg_pos = int(trg_pos) - 1
+            src_pos = int(src_pos) - 1
+            feedback_list.append((src_list[src_pos], trg_list[trg_pos]))
+    fb.on_approve_feedback(feedback_list)
+    cursor.close()
+    return 'Saved'
+
+@app.route("/v2/alignments/feedbacks/verses", methods=["POST"])
+def updatealignmentverses():
+    """
+    Updates alignment for a verse from the feedback loop up table
+    """
+    req = request.get_json(True)
+    bcv = req["bcv"]
+    connection = connect_db()
+    src = 'grk'
+    trg = 'hin'
+    fb = FeedbackAligner(connection, src, trg)
+    cursor = connection.cursor()
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid = cursor.fetchone()[0]
+    fb.update_alignment_on_verse(str(lid))
+    cursor.close()
+    return 'Saved'
 
