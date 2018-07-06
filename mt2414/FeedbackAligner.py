@@ -40,7 +40,7 @@ class FeedbackAligner:
 		cur.execute("SHOW TABLES LIKE '"+self.FeedbackLookup_table_name+"'")
 		if cur.rowcount==0:
 			cur.execute("CREATE TABLE "+self.FeedbackLookup_table_name+
-				" (source_word VARCHAR(50) CHARACTER SET utf8mb4 NOT NULL,target_word VARCHAR(50) CHARACTER SET utf8mb4 NOT NULL,confidence_score INT)")
+				" (source_word VARCHAR(50) CHARACTER SET utf8mb4 NOT NULL,target_word VARCHAR(50) CHARACTER SET utf8mb4 NOT NULL,confidence_score FLOAT(6,5))")
 			cur.execute("ALTER TABLE "+self.FeedbackLookup_table_name+" ADD UNIQUE INDEX source_word_index(source_word)")
 			cur.execute("ALTER TABLE "+self.FeedbackLookup_table_name+" ADD INDEX target_word_index(target_word)")
 			self.db.commit()
@@ -53,14 +53,47 @@ class FeedbackAligner:
 
 
 	def insert_into_lookup_table(self,src_word,trg_word):
-		try:
+		try:	
 			cur = self.db.cursor()
-			cur.execute("INSERT INTO "+self.FeedbackLookup_table_name+" (source_word,target_word,confidence_score) VALUES (%s,%s,1)",
-				(src_word,trg_word))
+
+			# for calculating confidence_score
+			cur.execute("select count(distinct left(occurences,5)) from grk_bible_concordance where word='"+src_word+"'") 
+			if cur.rowcount>0:
+				total_verses_src_word_occured = cur.fetchone()[0]
+				print(total_verses_src_word_occured)
+			else:
+				total_verses_src_word_occured = 1
+
+			cur.execute(" select count(distinct left(hin_bible_concordance.occurences,5)) from hin_bible_concordance INNER JOIN grk_bible_concordance on left(hin_bible_concordance.occurences,5)=left(grk_bible_concordance.occurences,5) where grk_bible_concordance.word='"+src_word+"' and hin_bible_concordance.word='"+trg_word+"'")
+			if cur.rowcount>0:
+				total_verses_trg_word_cooccured = cur.fetchone()[0]
+				print(total_verses_trg_word_cooccured)
+			else:
+				total_verses_trg_word_cooccured = 0
+
+
+			cur.execute("	select count(distinct b.lid) from grk_bible_concordance a, grk_hin_alignment b, hin_bible_concordance c where a.occurences=b.source_wordID and c.occurences=b.target_wordID and a.word='"+src_word+"' and c.word='"+trg_word+"'")
+			if cur.rowcount>0:
+				total_verses_src_trg_aligned = cur.fetchone()[0]
+				print(total_verses_src_trg_aligned)
+			else:
+				total_verses_src_trg_aligned = 0
+
+
+			co_occurence_confidence = total_verses_trg_word_cooccured/total_verses_src_word_occured
+			aligned_confidence = total_verses_src_trg_aligned/total_verses_trg_word_cooccured
+
+
+			confidence_score = 0.75*co_occurence_confidence + 0.25*aligned_confidence
+	
+
+			cur.execute("INSERT INTO "+self.FeedbackLookup_table_name+" (source_word,target_word,confidence_score) VALUES (%s,%s,%s)",
+				(src_word,trg_word,confidence_score))
 			self.db.commit()
 			
 		except Exception as e:
 			print("Warning: word pair not inserted to look up table")
+			print(e)
 
 	def update_all_alignment_by_word(self,src_word_to_update):
 		cur = self.db.cursor()
@@ -219,11 +252,11 @@ if __name__ == '__main__':
 	obj = FeedbackAligner(connection, src,trg)
 
 
-	# obj.on_approve_feedback([("G24240","यीशु"),("G52070","सन्तान")])
+	obj.on_approve_feedback([("G24240","यीशु"),("G52070","सन्तान")])
 
 	# obj.mark_alignment_as_verified(23147)
 
-	obj.update_alignment_on_verse('23146')
+	# obj.update_alignment_on_verse('23146')
 	
 
 	del obj
