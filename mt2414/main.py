@@ -1271,6 +1271,14 @@ def getalignments(bcv):
     cursor.execute("SELECT source_wordID, target_wordID, corrected FROM " + tablename + " WHERE source_wordID \
      LIKE  '" + str(lid) + "\_%'")
     rst2 = cursor.fetchall()
+    englishword = []
+    for sn in greek_list:
+        cursor.execute("SELECT english FROM lid_lxn_grk_eng WHERE strong = %s", (sn.lower(),))
+        rst_sn = cursor.fetchone()
+        if rst_sn:
+            englishword.append(rst_sn[0])
+        else:
+            englishword.append(sn)
     corrected = []
     hyphen_check = []
     for i in range(len(target_list)):
@@ -1310,7 +1318,7 @@ def getalignments(bcv):
     else:
         status = 'auto'
     cursor.close()
-    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list, 'greek':greek_list, 'status':status})
+    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list, 'greek':greek_list, 'status':status, 'englishword':englishword})
 
 def lid_to_bcv(num_list):
     '''
@@ -1464,14 +1472,14 @@ def editalignments():
     for l in range(len(hi_counter)):
         rem_hi = hi_counter[l]
         if rem_hi == 'NULL':
-            s_word = str(lid) + '_255'
+            s_word = str(lid) + '_0'
             t_word = str(lid) + '_' + str(l + 1)
             ppr_final_list.append([lid, s_word, t_word, 1])
     for li in range(len(st_counter)):
         rem_st = st_counter[li]
         if rem_st == 'NULL':
             s_word = str(lid) + '_' + str(li + 1)
-            t_word = str(lid) + '_255'
+            t_word = str(lid) + '_0'
             ppr_final_list.append([lid, s_word, t_word, 1])
     for ppr in ppr_final_list:
         cursor.execute("INSERT INTO " + tablename + " (lid,  source_wordID, target_wordID, corrected\
