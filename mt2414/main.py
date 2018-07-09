@@ -1275,10 +1275,12 @@ def getalignments(bcv):
     for sn in greek_list:
         cursor.execute("SELECT english FROM lid_lxn_grk_eng WHERE strong = %s", (sn.lower(),))
         rst_sn = cursor.fetchone()
-        if rst_sn:
-            englishword.append(rst_sn[0])
-        else:
+        if not rst_sn:
             englishword.append(sn)
+        elif '-' in rst_sn[0]:
+            englishword.append(sn)
+        else:
+            englishword.append(rst_sn[0])
     corrected = []
     hyphen_check = []
     for i in range(len(target_list)):
