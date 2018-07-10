@@ -1340,7 +1340,10 @@ def getalignments(bcv):
         else:
             cursor.execute("SELECT corrected FROM grk_hin_alignment WHERE source_wordID = %s AND target_wordID = %s", (src, targ))
             rst_color1 = cursor.fetchone()
-            colorcode.append(rst_color1[0])
+            if rst_color1:
+                colorcode.append(rst_color1[0])
+            else:
+                colorcode.append(0)
     cursor.close()
     return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list,\
      'greek':greek_list, 'status':status, 'englishword':englishword, 'colorcode':colorcode})
