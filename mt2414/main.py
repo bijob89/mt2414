@@ -1319,8 +1319,31 @@ def getalignments(bcv):
         status = 'manual'
     else:
         status = 'auto'
+    colorcode = []
+    for ps in position_list:
+        targ, src = ps.split('-')
+        if targ != '255':
+            targ_word = target_list[int(targ) - 1]
+        else:
+            targ_word = 'NULL'
+        if src != '255':
+            src_word = greek_list[int(src) - 1]
+        else:
+            src_word = 'NULL'
+        targ = str(lid) + '_' + targ
+        src = str(lid) + '_' + src
+        cursor.execute("SELECT * FROM grk_hin_FeedbackLookup WHERE source_word = %s \
+        AND target_word = %s", (src_word, targ_word))
+        rst_color = cursor.fetchone()
+        if rst_color:
+            colorcode.append(2)
+        else:
+            cursor.execute("SELECT corrected FROM grk_hin_alignment WHERE source_wordID = %s AND target_wordID = %s", (src, targ))
+            rst_color1 = cursor.fetchone()
+            colorcode.append(rst_color1[0])
     cursor.close()
-    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list, 'greek':greek_list, 'status':status, 'englishword':englishword})
+    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list,\
+     'greek':greek_list, 'status':status, 'englishword':englishword, 'colorcode':colorcode})
 
 def lid_to_bcv(num_list):
     '''
