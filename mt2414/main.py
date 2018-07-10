@@ -1275,12 +1275,14 @@ def getalignments(bcv):
     for sn in greek_list:
         cursor.execute("SELECT english FROM lid_lxn_grk_eng WHERE strong = %s", (sn.lower(),))
         rst_sn = cursor.fetchone()
-        if not rst_sn:
-            englishword.append(sn)
-        elif '-' in rst_sn[0]:
-            englishword.append(sn)
-        else:
+        if rst_sn and '-' not in rst_sn[0]:
             englishword.append(rst_sn[0])
+        else:
+            id = int(sn[1:-1])
+            cursor.execute("SELECT englishword FROM lxn_gre_eng WHERE id = %s", (id,))
+            rst_eng = cursor.fetchone()
+            eng_word = '* ' + ', '.join([' '.join(x.strip().split(' ')[0:-1]) for x in rst_eng[0].split(',')[0:4]])
+            englishword.append(eng_word)
     corrected = []
     hyphen_check = []
     for i in range(len(target_list)):
@@ -1315,10 +1317,6 @@ def getalignments(bcv):
                 delete_from_list.append(ppr)
     for pos_pair in delete_from_list:
         position_list.remove(pos_pair)
-    if corrected[0] == 1:
-        status = 'manual'
-    else:
-        status = 'auto'
     colorcode = []
     for ps in position_list:
         targ, src = ps.split('-')
@@ -1346,7 +1344,7 @@ def getalignments(bcv):
                 colorcode.append(0)
     cursor.close()
     return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list,\
-     'greek':greek_list, 'status':status, 'englishword':englishword, 'colorcode':colorcode})
+     'greek':greek_list, 'englishword':englishword, 'colorcode':colorcode})
 
 def lid_to_bcv(num_list):
     '''
