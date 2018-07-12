@@ -26,14 +26,15 @@ import pyotp
 import pyexcel
 import nltk
 import flask
-from flask import Flask, request, session, redirect
+from flask import Flask, request, session, redirect, jsonify
 from flask import g
 from flask_cors import CORS, cross_origin
 import jwt
 import requests
 import scrypt
 import psycopg2
-
+import pymysql
+from .FeedbackAligner import FeedbackAligner
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -47,6 +48,35 @@ postgres_port = os.environ.get("MT2414_POSTGRES_PORT", "5432")
 postgres_user = os.environ.get("MT2414_POSTGRES_USER", "postgres")
 postgres_password = os.environ.get("MT2414_POSTGRES_PASSWORD", "secret")
 postgres_database = os.environ.get("MT2414_POSTGRES_DATABASE", "postgres")
+host_api_url = os.environ.get("MT2414_HOST_API_URL")
+host_ui_url = os.environ.get("MT2414_HOST_UI_URL")
+mysql_host = os.environ.get("MTV2_HOST", "localhost")
+mysql_port = int(os.environ.get("MTV2_PORT", '3306'))
+mysql_user = os.environ.get("MTV2_USER", "mysql")
+mysql_password = os.environ.get("MTV2_PASSWORD", "secret")
+mysql_database = os.environ.get("MTV2_DATABASE", "postgres")
+
+books = {
+    "1": "GEN", "2": "EXO", "3": "LEV", "4": "NUM", "5": "DEU", "6": "JOS", "7": "JDG", 
+    "8": "RUT", "9": "1SA", "10": "2SA", "11": "1KI", "12": "2KI", "13": "1CH", "14": "2CH", 
+    "15": "EZR", "16": "NEH", "17": "EST", "18": "JOB", "19": "PSA", "20": "PRO", "21": "ECC", 
+    "22": "SNG", "23": "ISA", "24": "JER", "25": "LAM", "26": "EZK", "27": "DAN", "28": "HOS", 
+    "29": "JOL", "30": "AMO", "31": "OBA", "32": "JON", "33": "MIC", "34": "NAM", "35": "HAB", 
+    "36": "ZEP", "37": "HAG", "38": "ZEC", "39": "MAL", "40": "MAT", "41": "MRK", "42": "LUK", 
+    "43": "JHN", "44": "ACT", "45": "ROM", "46": "1CO", "47": "2CO", "48": "GAL", "49": "EPH", 
+    "50": "PHP", "51": "COL", "52": "1TH", "53": "2TH", "54": "1TI", "55": "2TI", "56": "TIT", 
+    "57": "PHM", "58": "HEB", "59": "JAS", "60": "1PE", "61": "2PE", "62": "1JN", "63": "2JN", 
+    "64": "3JN", "65": "JUD", "66": "REV"
+    }
+books_inverse = {v:k for k,v in books.items()} 
+
+def connect_db():
+    """
+    Opens a connection with MySQL Database
+    """
+    if not hasattr(g, 'db'):
+        g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+    return g.db
 
 def get_db():                                                                      #--------------To open database connection-------------------#
     """Opens a new database connection if there is none yet for the
@@ -98,9 +128,9 @@ def new_registration():
     body = '''Hi,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
     You need to confirm your email by opening this link:
 
-    <a href="https://api.mt2414.in/v1/verifications/%s">https://api.mt2414.in/v1/verifications/%s</a>
+    <a href="https://%s/v1/verifications/%s">https://%s/v1/verifications/%s</a>
 
-    <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code, verification_code)
+    <br/><br/>The documentation for accessing the API is available at <a href="https://docs.autographamt.com">https://docs.autographamt.com</a>''' % (host_api_url, verification_code, host_api_url, verification_code)
     payload = {
         "to": {email: ""},
         "from": ["noreply@autographamt.in", "Autographa MT"],
@@ -138,9 +168,9 @@ def reset_password():
         body = '''Hi,<br/><br/>your request for resetting the password has been recieved. <br/>
         Your temporary password is %s. Enter your new password by opening this link:
 
-        <a href="http://autographamt.com/forgotpassword">http://autographamt.com/forgotpassword</a>
+        <a href="https://%s/forgotpassword">https://%s/forgotpassword</a>
 
-        <br/><br/>The documentation for accessing the API is available at <a href="http://docs.mt2414.in">docs.mt2414.in</a>''' % (verification_code)
+        <br/><br/>The documentation for accessing the API is available at <a href="https://docs.autographamt.com">https://docs.autographamt.com</a>''' % (verification_code, host_ui_url, host_ui_url)
         payload = {
             "to": {email: ""},
             "from": ["noreply@autographamt.in", "AutographaMT"],
@@ -264,7 +294,7 @@ def new_registration2(code):
         cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
-    return redirect("http://autographamt.com/")
+    return redirect("https://%s/" % (host_ui_url))
 
 @app.route("/v1/createsources", methods=["POST"])                     #--------------For creating new source (admin) -------------------#
 @check_token
@@ -414,12 +444,12 @@ def updatelanguagelist():
         data = json.loads(url.read().decode())
         tr = {}
         for item in data:
-            if "IN" in item["cc"]:
-                tr[item["ang"]] = item["lc"]
+            # if "IN" in item["cc"]:
+            tr[item["ang"]] = item["lc"]
         db_item = pickle.dumps(tr)
         connection = get_db()
         cursor = connection.cursor()
-        cursor.execute("SELECT picklelist FROM targetlanglist")
+        cursor.execute("DELETE FROM targetlanglist")
         cursor.execute("INSERT INTO targetlanglist (picklelist) VALUES (%s)", (db_item,))
         cursor.close()
         connection.commit()
@@ -700,7 +730,7 @@ def tokenlist():
         token_list = []
         for bk in book_list:
             cursor.execute("SELECT  token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk))
-            cluster_token = cursor. fetchall()
+            cluster_token = cursor.fetchall()
             for ct in cluster_token:
                 token_list.append(ct[0])
         output = set(token_list) - set(token)
@@ -744,7 +774,7 @@ def tokencount():
             for bk in books:
                 token_list = []
                 cursor.execute("SELECT token FROM cluster WHERE revision_num = %s AND source_id = %s AND book_name = %s", (revision, source_id[0], bk[0]))
-                cluster_token = cursor. fetchall()
+                cluster_token = cursor.fetchall()
                 for ct in cluster_token:
                     token_list.append(ct[0])
                     total_token = len(token_list)
@@ -1217,3 +1247,347 @@ def corrections():
 @check_token
 def suggestions():
     return '{}\n'
+
+@app.route('/v2/alignments/<bcv>', methods=["GET"])
+def getalignments(bcv):
+    '''
+    Returns list of positional pairs, list of Hindi words, list of strong numbers for the bcv queried. 
+    '''
+    connection = connect_db()
+    cursor = connection.cursor()
+    tablename = 'grk_hin_alignment'
+    target_list = []
+    position_list = []
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid_rst = cursor.fetchone()
+    if lid_rst:
+        lid = lid_rst[0]
+    cursor.execute("SELECT verse FROM lid_hindi_text where lid=%s", (lid,))
+    rst = cursor.fetchone()
+    target_list = rst[0].split(' ')
+    cursor.execute("SELECT verse FROM lid_strong_text where lid=%s", (lid,))
+    rst1 = cursor.fetchone()
+    greek_list = rst1[0].split(' ')
+    cursor.execute("SELECT source_wordID, target_wordID, corrected FROM " + tablename + " WHERE source_wordID \
+     LIKE  '" + str(lid) + "\_%'")
+    rst2 = cursor.fetchall()
+    englishword = []
+    for sn in greek_list:
+        cursor.execute("SELECT english FROM lid_lxn_grk_eng WHERE strong = %s", (sn.lower(),))
+        rst_sn = cursor.fetchone()
+        if rst_sn and '-' not in rst_sn[0]:
+            englishword.append(rst_sn[0])
+        else:
+            id = int(sn[1:-1])
+            cursor.execute("SELECT englishword FROM lxn_gre_eng WHERE id = %s", (id,))
+            rst_eng = cursor.fetchone()
+            eng_word = '* ' + ', '.join([' '.join(x.strip().split(' ')[0:-1]) for x in rst_eng[0].split(',')[0:4]])
+            englishword.append(eng_word)
+    corrected = []
+    hyphen_check = []
+    for i in range(len(target_list)):
+        target_word = target_list[i]
+        if '-' in target_word:
+            hyphen_check.append(i+1)
+    src_check = []
+    trg_check = []
+    for items in rst2:
+        strong_pos = items[0].split('_')[1]
+        target_pos = int(items[1].split('_')[1])
+        if '255' not in strong_pos and '255' not in str(target_pos):
+            src_check.append(strong_pos)
+            trg_check.append(str(target_pos))
+        if int(items[2]) == 0:
+            for num in hyphen_check:
+                if target_pos != 255:
+                    if target_pos > num:
+                        target_pos = target_pos - 1
+                    else:
+                        break
+        position_list.append(str(target_pos) + '-' + strong_pos)
+        corrected.append(items[2])
+    delete_from_list = []
+    position_list = list(set(position_list))
+    for ppr in position_list:
+        if '255' in ppr:
+            pos_pairs = ppr.split('-')
+            if pos_pairs[0] in trg_check:
+                delete_from_list.append(ppr)
+            if pos_pairs[1] in src_check:
+                delete_from_list.append(ppr)
+    for pos_pair in delete_from_list:
+        position_list.remove(pos_pair)
+    colorcode = []
+    for ps in position_list:
+        targ, src = ps.split('-')
+        if targ != '255':
+            targ_word = target_list[int(targ) - 1]
+        else:
+            targ_word = 'NULL'
+        if src != '255':
+            src_word = greek_list[int(src) - 1]
+        else:
+            src_word = 'NULL'
+        targ = str(lid) + '_' + targ
+        src = str(lid) + '_' + src
+        cursor.execute("SELECT * FROM grk_hin_FeedbackLookup WHERE source_word = %s \
+        AND target_word = %s", (src_word, targ_word))
+        rst_color = cursor.fetchone()
+        if rst_color:
+            colorcode.append(2)
+        else:
+            cursor.execute("SELECT corrected FROM grk_hin_alignment WHERE source_wordID = %s AND target_wordID = %s", (src, targ))
+            rst_color1 = cursor.fetchone()
+            if rst_color1:
+                colorcode.append(rst_color1[0])
+            else:
+                colorcode.append(0)
+    cursor.close()
+    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list,\
+     'greek':greek_list, 'englishword':englishword, 'colorcode':colorcode})
+
+def lid_to_bcv(num_list):
+    '''
+    Recieves a list of Lid's and returns a BCV list.
+    '''
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT lid, bcv FROM bcv_lid_map")
+    rst = cursor.fetchall()
+    lid_dict = {}
+    bcv_list = []
+    for k,v in rst:
+        lid_dict[k] = v
+    for n in num_list:
+        bcv = lid_dict[n]
+        bcv_list.append(bcv)
+    cursor.close()
+    return bcv_list
+
+@app.route('/v2/alignments/books', methods=["GET"])
+def getbooks():
+    '''
+    Returns a list of books whose alignments are available
+    '''
+    connection = connect_db()
+    cursor = connection.cursor()
+    tablename = 'grk_hin_alignment'
+    cursor.execute("SELECT lid, bcv FROM bcv_lid_map")
+    rst_num = cursor.fetchall()
+    lid_dict = {}
+    for k,v in rst_num:
+        lid_dict[k] = v
+    cursor.execute("SELECT DISTINCT(lid) FROM " + tablename + "")
+    rst = cursor.fetchall()
+    if rst != []:
+        lid_list  = []
+        for l in rst:
+            if l[0] not in lid_list:
+                lid_list.append(l[0])
+    else:
+        return 'No Data'
+    bcv_list = lid_to_bcv(lid_list)
+    all_books = []
+    for item in sorted(bcv_list):
+        bcv = str(item)
+        length = len(bcv)
+        book_code = bcv[-length:-6]
+        book_name = books[book_code]
+        if book_name not in all_books:
+            all_books.append(book_name)
+    cursor.close()
+    return jsonify({"books":all_books})
+
+@app.route('/v2/alignments/chapternumbers/<bookname>', methods=["GET"])
+def getchapternumbers(bookname):
+    '''
+    Returns a list of chapter number of the book queried.
+    '''
+    connection = connect_db()
+    cursor = connection.cursor()
+    bookname = bookname.upper()
+    if bookname not in books_inverse:
+        return 'Invalid book name'
+    else:
+        bookcode = books_inverse[bookname]
+    
+    prev = int(bookcode) * 1000000
+    nxt = (int(bookcode) + 1) * 1000000
+    cursor.execute("SELECT bcv FROM bcv_lid_map WHERE bcv > %s and bcv < %s", (prev, nxt))
+    rst = cursor.fetchall()
+    temp_list = []
+    if rst != []:
+        for bcv in rst:
+            temp_str = str(bcv[0])
+            chapter_num = temp_str[-6:-3]
+            if int(chapter_num) not in temp_list:
+                temp_list.append(int(chapter_num))
+    cursor.close()
+    return jsonify({"chapter_numbers": sorted(temp_list)})
+
+@app.route('/v2/alignments/versenumbers/<bookname>/<chapternumber>', methods=["GET"])
+def getversenumbers(bookname, chapternumber):
+    '''
+    Returns a list containing the verse numbers for the particular chapter number of a book.
+    '''
+    connection = connect_db()
+    cursor = connection.cursor()
+    bookname = bookname.upper()
+    if bookname not in books_inverse:
+        return 'Invalid book name'
+    else:
+        bookcode = books_inverse[bookname]
+    prev = int(str(bookcode) + str(int(chapternumber)).zfill(3) + '000')
+    nxt = int(str(bookcode) + str(int(chapternumber) + 1).zfill(3) + '000')
+    cursor.execute("SELECT bcv FROM bcv_lid_map WHERE bcv > %s and bcv < %s", (prev, nxt))
+    rst = cursor.fetchall()
+    temp_list = []
+    if rst != []:
+        for bcv in rst:
+            temp_str = str(bcv[0])
+            verse_num = temp_str[5:]
+            if int(verse_num) not in temp_list:
+                temp_list.append(int(verse_num))
+    cursor.close()
+    return jsonify({"verse_numbers": sorted(temp_list)})
+
+@app.route('/v2/alignments', methods=["POST"])
+def editalignments():
+    '''
+    Recieves BCV and list of positional pairs as input. The old positional pairs
+    are deleted and the new ones are inserted into the database.
+    '''
+    req = request.get_json(True)
+    bcv = req["bcv"]
+    position_pairs = req["positional_pairs"]
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid_rst = cursor.fetchone()
+    if lid_rst:
+        lid = lid_rst[0]
+    tablename = 'grk_hin_alignment'
+    ppr_final_list = []
+    cursor.execute("SELECT verse FROM lid_hindi_text where lid=%s", (lid,))
+    rst_hin = cursor.fetchone()
+    hindi_list = rst_hin[0].split(' ')
+    cursor.execute("SELECT verse FROM lid_strong_text where lid=%s", (lid,))
+    rst_grk = cursor.fetchone()
+    greek_list = rst_grk[0].split(' ')
+    cursor.execute("DELETE FROM " + tablename + " WHERE lid = %s", (lid,))
+    stage = list(set(position_pairs))
+    hi_counter = ['NULL' for i in range(len(hindi_list))]
+    st_counter = ['NULL' for i in range(len(greek_list))]
+    for it in stage:
+        it = it.split('-')
+        s_wordid = it[1]
+        t_wordid = it[0]
+        if s_wordid != '255':
+            st_pos = int(s_wordid) - 1
+            st_counter[st_pos] = 'IN'
+            source_wordid = str(lid) + '_' + s_wordid
+        else:
+            source_wordid = str(lid) + '_' + s_wordid
+        if t_wordid != '255':
+            hi_pos = int(t_wordid) - 1
+            hi_counter[hi_pos] = 'IN'
+            target_wordid = str(lid) + '_' + t_wordid
+        else:
+            target_wordid = str(lid) + '_' + t_wordid
+        ppr_final_list.append([lid, source_wordid, target_wordid, 1])
+    for l in range(len(hi_counter)):
+        rem_hi = hi_counter[l]
+        if rem_hi == 'NULL':
+            s_word = str(lid) + '_0'
+            t_word = str(lid) + '_' + str(l + 1)
+            ppr_final_list.append([lid, s_word, t_word, 1])
+    for li in range(len(st_counter)):
+        rem_st = st_counter[li]
+        if rem_st == 'NULL':
+            s_word = str(lid) + '_' + str(li + 1)
+            t_word = str(lid) + '_0'
+            ppr_final_list.append([lid, s_word, t_word, 1])
+    for ppr in ppr_final_list:
+        cursor.execute("INSERT INTO " + tablename + " (lid,  source_wordID, target_wordID, corrected\
+        ) VALUES (%s, %s, %s, %s)", (ppr[0], ppr[1], ppr[2], ppr[3]))
+    fb = FeedbackAligner(connection, 'grk', 'hin')
+    fb.mark_alignment_as_verified(lid)
+    connection.commit()
+    cursor.close()
+    return 'Saved'
+
+@app.route("/v2/lexicons/<strong>", methods=["GET"])
+def getlexicons(strong):
+    """
+    Fetches Lexicon data for the specified strongs.
+    """
+    connection = connect_db()
+    cursor = connection.cursor()
+    strong = strong[1:-1]
+    if not strong.isdigit():
+        return 'Invalid Strong Number\n'
+    else:
+        strong = int(strong)
+    cursor.execute("SELECT * FROM lxn_gre_eng WHERE id = %s", (strong,))
+    rst = cursor.fetchone()
+    if rst:
+        strongs = rst[0]
+        pronunciation = rst[1]
+        greek_word = rst[2]
+        transliteration = rst[3]
+        definition = rst[4]
+        englishword = rst[6]
+    else:
+        return 'No information available'
+    cursor.close()
+    return jsonify({"strongs":strongs, "pronunciation":pronunciation, "greek_word":greek_word, \
+                "transliteration":transliteration, "definition":definition, "englishword":englishword})
+
+@app.route("/v2/alignments/feedbacks", methods=["POST"])
+def approvefeedbacks():
+    """
+    Inserts the  alignment into the feedback loop up table
+    """
+    req = request.get_json(True)
+    bcv = req["bcv"]
+    positional_pairs = req["positional_pairs"]
+    connection = connect_db()
+    src = 'grk'
+    trg = 'hin'
+    fb = FeedbackAligner(connection, src, trg)
+    cursor = connection.cursor()
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid = cursor.fetchone()[0]
+    cursor.execute("SELECT verse FROM lid_hindi_text WHERE lid=%s", (lid,))
+    trg_list = cursor.fetchone()[0].split(' ')
+    cursor.execute("SELECT verse FROM lid_strong_text WHERE lid=%s", (lid,))
+    src_list = cursor.fetchone()[0].split(' ')
+    feedback_list = []
+    for item in positional_pairs:
+        if '255' not in item:
+            trg_pos, src_pos = item.split('-')
+            trg_pos = int(trg_pos) - 1
+            src_pos = int(src_pos) - 1
+            feedback_list.append((src_list[src_pos], trg_list[trg_pos]))
+    fb.on_approve_feedback(feedback_list)
+    cursor.close()
+    return 'Saved'
+
+@app.route("/v2/alignments/feedbacks/verses", methods=["POST"])
+def updatealignmentverses():
+    """
+    Updates alignment for a verse from the feedback loop up table
+    """
+    req = request.get_json(True)
+    bcv = req["bcv"]
+    connection = connect_db()
+    src = 'grk'
+    trg = 'hin'
+    fb = FeedbackAligner(connection, src, trg)
+    cursor = connection.cursor()
+    cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
+    lid = cursor.fetchone()[0]
+    fb.update_alignment_on_verse(str(lid))
+    cursor.close()
+    return 'Saved'
+
