@@ -1271,6 +1271,18 @@ def getalignments(bcv):
     cursor.execute("SELECT source_wordID, target_wordID, corrected FROM " + tablename + " WHERE source_wordID \
      LIKE  '" + str(lid) + "\_%'")
     rst2 = cursor.fetchall()
+    englishword = []
+    for sn in greek_list:
+        cursor.execute("SELECT english FROM lid_lxn_grk_eng WHERE strong = %s", (sn.lower(),))
+        rst_sn = cursor.fetchone()
+        if rst_sn and '-' not in rst_sn[0]:
+            englishword.append(rst_sn[0])
+        else:
+            id = int(sn[1:-1])
+            cursor.execute("SELECT englishword FROM lxn_gre_eng WHERE id = %s", (id,))
+            rst_eng = cursor.fetchone()
+            eng_word = '* ' + ', '.join([' '.join(x.strip().split(' ')[0:-1]) for x in rst_eng[0].split(',')[0:4]])
+            englishword.append(eng_word)
     corrected = []
     hyphen_check = []
     for i in range(len(target_list)):
@@ -1305,12 +1317,34 @@ def getalignments(bcv):
                 delete_from_list.append(ppr)
     for pos_pair in delete_from_list:
         position_list.remove(pos_pair)
-    if corrected[0] == 1:
-        status = 'manual'
-    else:
-        status = 'auto'
+    colorcode = []
+    for ps in position_list:
+        targ, src = ps.split('-')
+        if targ != '255':
+            targ_word = target_list[int(targ) - 1]
+        else:
+            targ_word = 'NULL'
+        if src != '255':
+            src_word = greek_list[int(src) - 1]
+        else:
+            src_word = 'NULL'
+        targ = str(lid) + '_' + targ
+        src = str(lid) + '_' + src
+        cursor.execute("SELECT * FROM grk_hin_FeedbackLookup WHERE source_word = %s \
+        AND target_word = %s", (src_word, targ_word))
+        rst_color = cursor.fetchone()
+        if rst_color:
+            colorcode.append(2)
+        else:
+            cursor.execute("SELECT corrected FROM grk_hin_alignment WHERE source_wordID = %s AND target_wordID = %s", (src, targ))
+            rst_color1 = cursor.fetchone()
+            if rst_color1:
+                colorcode.append(rst_color1[0])
+            else:
+                colorcode.append(0)
     cursor.close()
-    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list, 'greek':greek_list, 'status':status})
+    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list,\
+     'greek':greek_list, 'englishword':englishword, 'colorcode':colorcode})
 
 def lid_to_bcv(num_list):
     '''
@@ -1464,14 +1498,14 @@ def editalignments():
     for l in range(len(hi_counter)):
         rem_hi = hi_counter[l]
         if rem_hi == 'NULL':
-            s_word = str(lid) + '_255'
+            s_word = str(lid) + '_0'
             t_word = str(lid) + '_' + str(l + 1)
             ppr_final_list.append([lid, s_word, t_word, 1])
     for li in range(len(st_counter)):
         rem_st = st_counter[li]
         if rem_st == 'NULL':
             s_word = str(lid) + '_' + str(li + 1)
-            t_word = str(lid) + '_255'
+            t_word = str(lid) + '_0'
             ppr_final_list.append([lid, s_word, t_word, 1])
     for ppr in ppr_final_list:
         cursor.execute("INSERT INTO " + tablename + " (lid,  source_wordID, target_wordID, corrected\
