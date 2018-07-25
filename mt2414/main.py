@@ -35,6 +35,7 @@ import scrypt
 import psycopg2
 import pymysql
 from .FeedbackAligner import FeedbackAligner
+from .JsonExporter import JsonExporter
 
 logging.basicConfig(filename='API_logs.log', format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -75,7 +76,8 @@ def connect_db():
     Opens a connection with MySQL Database
     """
     if not hasattr(g, 'db'):
-        g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+        # g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+        g.db = pymysql.connect(host='localhost',database='test_new_tables', user='root', password='11111111', charset='utf8mb4')
     return g.db
 
 def get_db():                                                                      #--------------To open database connection-------------------#
@@ -1255,96 +1257,65 @@ def getalignments(bcv):
     '''
     connection = connect_db()
     cursor = connection.cursor()
-    tablename = 'grk_hin_alignment'
-    target_list = []
-    position_list = []
+    tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
     cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
     lid_rst = cursor.fetchone()
     if lid_rst:
         lid = lid_rst[0]
-    cursor.execute("SELECT verse FROM lid_hindi_text where lid=%s", (lid,))
-    rst = cursor.fetchone()
-    target_list = rst[0].split(' ')
-    cursor.execute("SELECT verse FROM lid_strong_text where lid=%s", (lid,))
-    rst1 = cursor.fetchone()
-    greek_list = rst1[0].split(' ')
-    cursor.execute("SELECT source_wordID, target_wordID, corrected FROM " + tablename + " WHERE source_wordID \
-     LIKE  '" + str(lid) + "\_%'")
-    rst2 = cursor.fetchall()
+    fb = FeedbackAligner(connection, 'grk', 'hin')
+    result = fb.fetch_alignment(str(lid), tablename)
+
+    source_text = ['' for i in range(len(result[0]))]
+    for s_item in result[0]:
+        index = s_item[1].split('_')[1]
+        s_text = 'G' + s_item[0].zfill(4) + '0'
+        source_text[int(index) - 1] = s_text
+
+    target_text = ['' for i in range(len(result[1]))]
+    for t_item in result[1]:
+        index = t_item[1].split('_')[1]
+        t_text = t_item[0]
+        target_text[int(index) - 1] = t_text
+
+    auto_alignments = []
+    for a_item in result[2]:
+        src = a_item[1].split('_')[1]
+        trg = a_item[2].split('_')[1]
+        auto_alignments.append(trg + '-' + src)
+
+    corrected_alignments = []
+    for c_item in result[3]:
+        src = c_item[1].split('_')[1]
+        trg = c_item[2].split('_')[1]
+        corrected_alignments.append(trg + '-' + src)
+
+    position_pairs = corrected_alignments + \
+                            [x for x in auto_alignments if x not in corrected_alignments]
+    colorcode = [1 for i in range(len(corrected_alignments))] + \
+                            [0 for i in range(len(position_pairs) - len(corrected_alignments))]
+
     englishword = []
-    for sn in greek_list:
+    english_dict = {}
+    print('start')
+    for sn in source_text:
         cursor.execute("SELECT english FROM lid_lxn_grk_eng WHERE strong = %s", (sn.lower(),))
         rst_sn = cursor.fetchone()
         if rst_sn and '-' not in rst_sn[0]:
             englishword.append(rst_sn[0])
         else:
             id = int(sn[1:-1])
-            cursor.execute("SELECT englishword FROM lxn_gre_eng WHERE id = %s", (id,))
-            rst_eng = cursor.fetchone()
-            eng_word = '* ' + ', '.join([' '.join(x.strip().split(' ')[0:-1]) for x in rst_eng[0].split(',')[0:4]])
-            englishword.append(eng_word)
-    corrected = []
-    hyphen_check = []
-    for i in range(len(target_list)):
-        target_word = target_list[i]
-        if '-' in target_word:
-            hyphen_check.append(i+1)
-    src_check = []
-    trg_check = []
-    for items in rst2:
-        strong_pos = items[0].split('_')[1]
-        target_pos = int(items[1].split('_')[1])
-        if '255' not in strong_pos and '255' not in str(target_pos):
-            src_check.append(strong_pos)
-            trg_check.append(str(target_pos))
-        if int(items[2]) == 0:
-            for num in hyphen_check:
-                if target_pos != 255:
-                    if target_pos > num:
-                        target_pos = target_pos - 1
-                    else:
-                        break
-        position_list.append(str(target_pos) + '-' + strong_pos)
-        corrected.append(items[2])
-    delete_from_list = []
-    position_list = list(set(position_list))
-    for ppr in position_list:
-        if '255' in ppr:
-            pos_pairs = ppr.split('-')
-            if pos_pairs[0] in trg_check:
-                delete_from_list.append(ppr)
-            if pos_pairs[1] in src_check:
-                delete_from_list.append(ppr)
-    for pos_pair in delete_from_list:
-        position_list.remove(pos_pair)
-    colorcode = []
-    for ps in position_list:
-        targ, src = ps.split('-')
-        if targ != '255':
-            targ_word = target_list[int(targ) - 1]
-        else:
-            targ_word = 'NULL'
-        if src != '255':
-            src_word = greek_list[int(src) - 1]
-        else:
-            src_word = 'NULL'
-        targ = str(lid) + '_' + targ
-        src = str(lid) + '_' + src
-        cursor.execute("SELECT * FROM grk_hin_FeedbackLookup WHERE source_word = %s \
-        AND target_word = %s", (src_word, targ_word))
-        rst_color = cursor.fetchone()
-        if rst_color:
-            colorcode.append(2)
-        else:
-            cursor.execute("SELECT corrected FROM grk_hin_alignment WHERE source_wordID = %s AND target_wordID = %s", (src, targ))
-            rst_color1 = cursor.fetchone()
-            if rst_color1:
-                colorcode.append(rst_color1[0])
+            if id not in english_dict:
+                cursor.execute("SELECT englishword FROM lxn_gre_eng WHERE id = %s", (id,))
+                rst_eng = cursor.fetchone()
+                eng_word = '* ' + ', '.join([' '.join(x.strip().split(' ')[0:-1]) \
+                                                            for x in rst_eng[0].split(',')[0:4]])
+                english_dict[id] = eng_word
             else:
-                colorcode.append(0)
-    cursor.close()
-    return jsonify({'positionalpairs':sorted(position_list), 'hinditext':target_list,\
-     'greek':greek_list, 'englishword':englishword, 'colorcode':colorcode})
+                eng_word = english_dict[id]                                                                
+            englishword.append(eng_word)
+    print('stop')
+    return jsonify({'positionalpairs':sorted(position_pairs), 'hinditext':target_text,\
+     'greek':source_text, 'englishword':englishword, 'colorcode':colorcode})
 
 def lid_to_bcv(num_list):
     '''
@@ -1371,7 +1342,7 @@ def getbooks():
     '''
     connection = connect_db()
     cursor = connection.cursor()
-    tablename = 'grk_hin_alignment'
+    tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
     cursor.execute("SELECT lid, bcv FROM bcv_lid_map")
     rst_num = cursor.fetchall()
     lid_dict = {}
@@ -1451,6 +1422,13 @@ def getversenumbers(bookname, chapternumber):
     cursor.close()
     return jsonify({"verse_numbers": sorted(temp_list)})
 
+def db_text_to_list(value):
+    text_list = ['' for i in range(len(value))]
+    for item in value:
+        index = item[1].split('_')[1]
+        text_list[int(index) - 1] = item[0]
+    return text_list
+
 @app.route('/v2/alignments', methods=["POST"])
 def editalignments():
     '''
@@ -1460,56 +1438,74 @@ def editalignments():
     req = request.get_json(True)
     bcv = req["bcv"]
     position_pairs = req["positional_pairs"]
+    print(position_pairs)
     connection = connect_db()
     cursor = connection.cursor()
     cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
     lid_rst = cursor.fetchone()
     if lid_rst:
         lid = lid_rst[0]
-    tablename = 'grk_hin_alignment'
+    tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
     ppr_final_list = []
-    cursor.execute("SELECT verse FROM lid_hindi_text where lid=%s", (lid,))
-    rst_hin = cursor.fetchone()
-    hindi_list = rst_hin[0].split(' ')
-    cursor.execute("SELECT verse FROM lid_strong_text where lid=%s", (lid,))
-    rst_grk = cursor.fetchone()
-    greek_list = rst_grk[0].split(' ')
+
+    trg_table_name = 'hin_bible_concordance'
+    src_table_name = 'grk_bible_concordance'
+
+    cursor.execute("SELECT word, occurences FROM "+ trg_table_name + \
+    " WHERE occurences LIKE '" + str(lid) + "\_%'")
+    t_result = cursor.fetchall()
+    trg_list = db_text_to_list(t_result)
+
+    cursor.execute("SELECT word, occurences FROM "+ src_table_name + \
+    " WHERE occurences LIKE '" + str(lid) + "\_%'")
+    s_result = cursor.fetchall()
+    src_list = db_text_to_list(s_result)
+
+    # cursor.execute("SELECT verse FROM lid_hindi_text where lid=%s", (lid,))
+    # rst_hin = cursor.fetchone()
+    # hindi_list = rst_hin[0].split(' ')
+    # cursor.execute("SELECT verse FROM lid_strong_text where lid=%s", (lid,))
+    # rst_grk = cursor.fetchone()
+    # greek_list = rst_grk[0].split(' ')
     cursor.execute("DELETE FROM " + tablename + " WHERE lid = %s", (lid,))
     stage = list(set(position_pairs))
-    hi_counter = ['NULL' for i in range(len(hindi_list))]
-    st_counter = ['NULL' for i in range(len(greek_list))]
+    trg_counter = ['NULL' for i in range(len(trg_list))]
+    src_counter = ['NULL' for i in range(len(src_list))]
     for it in stage:
         it = it.split('-')
         s_wordid = it[1]
         t_wordid = it[0]
         if s_wordid != '255':
-            st_pos = int(s_wordid) - 1
-            st_counter[st_pos] = 'IN'
+            src_pos = int(s_wordid) - 1
+            src_counter[src_pos] = 'IN'
             source_wordid = str(lid) + '_' + s_wordid
         else:
             source_wordid = str(lid) + '_' + s_wordid
         if t_wordid != '255':
-            hi_pos = int(t_wordid) - 1
-            hi_counter[hi_pos] = 'IN'
+            trg_pos = int(t_wordid) - 1
+            print(it)
+            print(trg_pos)
+            print(trg_counter)
+            trg_counter[trg_pos] = 'IN'
             target_wordid = str(lid) + '_' + t_wordid
         else:
             target_wordid = str(lid) + '_' + t_wordid
-        ppr_final_list.append([lid, source_wordid, target_wordid, 1])
-    for l in range(len(hi_counter)):
-        rem_hi = hi_counter[l]
+        ppr_final_list.append([lid, source_wordid, target_wordid])
+    for l in range(len(trg_counter)):
+        rem_hi = trg_counter[l]
         if rem_hi == 'NULL':
             s_word = str(lid) + '_0'
             t_word = str(lid) + '_' + str(l + 1)
-            ppr_final_list.append([lid, s_word, t_word, 1])
-    for li in range(len(st_counter)):
-        rem_st = st_counter[li]
+            ppr_final_list.append([lid, s_word, t_word])
+    for li in range(len(src_counter)):
+        rem_st = src_counter[li]
         if rem_st == 'NULL':
             s_word = str(lid) + '_' + str(li + 1)
             t_word = str(lid) + '_0'
-            ppr_final_list.append([lid, s_word, t_word, 1])
+            ppr_final_list.append([lid, s_word, t_word])
     for ppr in ppr_final_list:
-        cursor.execute("INSERT INTO " + tablename + " (lid,  source_wordID, target_wordID, corrected\
-        ) VALUES (%s, %s, %s, %s)", (ppr[0], ppr[1], ppr[2], ppr[3]))
+        cursor.execute("INSERT INTO " + tablename + " (lid,  source_wordID, target_wordID\
+        ) VALUES (%s, %s, %s)", (ppr[0], ppr[1], ppr[2]))
     fb = FeedbackAligner(connection, 'grk', 'hin')
     fb.mark_alignment_as_verified(lid)
     connection.commit()
@@ -1558,10 +1554,23 @@ def approvefeedbacks():
     cursor = connection.cursor()
     cursor.execute("SELECT lid FROM bcv_lid_map WHERE bcv = %s", (bcv,))
     lid = cursor.fetchone()[0]
-    cursor.execute("SELECT verse FROM lid_hindi_text WHERE lid=%s", (lid,))
-    trg_list = cursor.fetchone()[0].split(' ')
-    cursor.execute("SELECT verse FROM lid_strong_text WHERE lid=%s", (lid,))
-    src_list = cursor.fetchone()[0].split(' ')
+
+    trg_table_name = 'hin_bible_concordance'
+    src_table_name = 'grk_bible_concordance'
+
+    cursor.execute("SELECT word, occurences FROM "+ trg_table_name + \
+    " WHERE occurences LIKE '" + str(lid) + "\_%'")
+    t_result = cursor.fetchall()
+    trg_list = db_text_to_list(t_result)
+
+    cursor.execute("SELECT word, occurences FROM "+ src_table_name + \
+    " WHERE occurences LIKE '" + str(lid) + "\_%'")
+    s_result = cursor.fetchall()
+    src_list = db_text_to_list(s_result)
+    # cursor.execute("SELECT verse FROM lid_hindi_text WHERE lid=%s", (lid,))
+    # trg_list = cursor.fetchone()[0].split(' ')
+    # cursor.execute("SELECT verse FROM lid_strong_text WHERE lid=%s", (lid,))
+    # src_list = cursor.fetchone()[0].split(' ')
     feedback_list = []
     for item in positional_pairs:
         if '255' not in item:
@@ -1591,3 +1600,11 @@ def updatealignmentverses():
     cursor.close()
     return 'Saved'
 
+
+@app.route("/v2/alignments/grkhin", methods=["GET"])
+def jsonexporter():
+    connection  = connect_db()
+    tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    je = JsonExporter(connection, 'grk', 'hin', tablename)
+    var = je.exportAlignments()
+    return var

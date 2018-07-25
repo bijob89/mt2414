@@ -182,29 +182,29 @@ class FeedbackAligner:
 		src_word_list = []
 		for row in cur.fetchall():
 			src_word_list.append((row[0],row[1]))
-		print("src_word_list")
-		print(src_word_list)
+		# print("src_word_list")
+		# print(src_word_list)
 
 
 		cur.execute("SELECT word,occurences FROM "+self.trg_table_name+" WHERE occurences LIKE '"+lid+"\_%'")
 		trg_word_list = []
 		for row in cur.fetchall():
 			trg_word_list.append((row[0],row[1]))
-		print("trg_word_list")
-		print(trg_word_list)
+		# print("trg_word_list")
+		# print(trg_word_list)
 
 
 		# get the alignments from specified table
 		cur.execute("SELECT * from "+auto_alignmenttable+" WHERE lid='"+lid+"'")
 		auto_alignments = cur.fetchall()
-		print("auto_alignments")
-		print(auto_alignments)
+		# print("auto_alignments")
+		# print(auto_alignments)
 
 		# get the alignments from master table, if present
 		cur.execute("SELECT * from "+self.alignment_table_name+" WHERE lid='"+lid+"'")
 		corrected_alignments = cur.fetchall()
-		print("corrected_alignments")
-		print(corrected_alignments)
+		# print("corrected_alignments")
+		# print(corrected_alignments)
 
 		# for all source_words get _FeedbackLookup entry
 		# and if entry present in trg_verse, add them to replacement_options
@@ -223,10 +223,10 @@ class FeedbackAligner:
 						break
 				if flag==True:
 					break
-		print("replacement_options")
-		print(replacement_options)
+		# print("replacement_options")
+		# print(replacement_options)
 
-		# return both
+		return src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options
 	
 
 
