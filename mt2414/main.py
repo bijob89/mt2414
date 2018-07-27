@@ -58,20 +58,6 @@ mysql_password = os.environ.get("MTV2_PASSWORD", "secret")
 mysql_database = os.environ.get("MTV2_DATABASE", "postgres")
 
 
-bible_book_names = {'1 Chronicles': '13', '1 Corinthians': '46', '1 John': '62', '1 Kings': '11',
- '1 Peter': '60', '1 Samuel': '9', '1 Thessalonians': '52', '1 Timothy': '54', '2 Chronicles': '14',
- '2 Corinthians': '47', '2 John': '63', '2 Kings': '12', '2 Peter': '61', '2 Samuel': '10',
- '2 Thessalonians': '53', '2 Timothy': '55', '3 John': '64', 'Acts': '44', 'Amos': '30',
- 'Colossians': '51', 'Daniel': '27', 'Deuteronomy': '5', 'Ecclesiastes': '21', 'Ephesians': '49',
- 'Esther': '17', 'Exodus': '2', 'Ezekiel': '26', 'Ezra': '15', 'Galatians': '48', 'Genesis': '1',
- 'Habakkuk': '35', 'Haggai': '37', 'Hebrews': '58', 'Hosea': '28', 'Isaiah': '23', 'James': '59',
- 'Jeremiah': '24', 'Job': '18', 'Joel': '29', 'John': '43', 'Jonah': '32', 'Joshua': '6',
- 'Jude': '65', 'Judges': '7', 'Lamentations': '25', 'Leviticus': '3', 'Luke': '42', 'Malachi': '39',
- 'Mark': '41', 'Matthew': '40', 'Micah': '33', 'Nahum': '34', 'Nehemiah': '16', 'Numbers': '4',
- 'Obadiah': '31', 'Philemon': '57', 'Philippians': '50', 'Proverbs': '20', 'Psalms': '19',
- 'Revelation': '66', 'Romans': '45', 'Ruth': '8', 'Song of Solomon': '22', 'Titus': '56',
- 'Zechariah': '38', 'Zephaniah': '36'}
-
 def connect_db():
     """
     Opens a connection with MySQL Database
@@ -1688,24 +1674,3 @@ def searchreference():
     else:
         return 'Incorrect Format'
 
-@app.route("/v2/searchreferences", methods=["POST"])
-def searchreference():
-    reference = request.form["reference"]
-    pattern = re.compile('(?:\s+)?((?:\d+)?\s?[a-zA-Z]+)(?:\s+)?(\d+)(?:\s+)?:(?:\s+)?(\d+)')
-    if re.search(pattern, reference):
-        s = re.search(pattern, reference)
-        book = s.group(1)
-        book = book.strip()
-        try:
-            if len(book) > 3:
-                book = bible_book_names[book.capitalize()]
-            else:
-                book = books_inverse[s.group(1).upper()]
-        except:
-            return 'Invalid Book Name or Book Code'
-        chap = s.group(2).zfill(3)
-        ver = s.group(3).zfill(3)
-        bc = book + chap + ver
-        return bc
-    else:
-        return 'Incorrect Format'
