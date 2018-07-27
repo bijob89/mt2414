@@ -17,7 +17,7 @@ class FeedbackAligner:
 		self.src_table_name = src+"_bible_concordance"
 		self.trg_table_name = trg+"_bible_concordance"
 
-		self.alignment_table_name = src+"_"+trg+"_alignment"
+		self.alignment_table_name = src+"_"+trg+"_sw_stm_ne_giza_tw__alignment"
 		self.FeedbackLookup_table_name = src+"_"+trg+"_FeedbackLookup"
 
 		cur.execute("SHOW TABLES LIKE '"+self.src_table_name+"'")
