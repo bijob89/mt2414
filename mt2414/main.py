@@ -1703,3 +1703,24 @@ def searchreference():
     else:
         return 'Incorrect Format'
 
+@app.route("/v2/alignments/languages", methods=["GET"])
+def getlanguages():
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute("SHOW TABLES LIKE '%_alignment%'")
+    rst = cursor.fetchall()
+    languagelist = {
+        'grk': 'Greek',
+        'hin': 'Hindi',
+        'mar': 'Marathi',
+        'guj': 'Gujarati'
+    }
+    languagedict = {}
+    for item in list(set(rst)):
+        split_item = item[0].split('_')
+        src = split_item[0]
+        trg = split_item[1]
+        lang = src + trg
+        alignments = '%s to %s' %(languagelist[src], languagelist[trg])
+        languagedict[lang] = alignments
+    return jsonify(languagedict)
