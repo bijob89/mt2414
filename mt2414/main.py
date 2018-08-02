@@ -1330,22 +1330,27 @@ def getEnglishWords(strongsArray):
     cursor.close()
     return englishword
 
-@app.route('/v2/alignments/<bcv>', methods=["GET"])
-def getalignments(bcv):
+@app.route('/v2/alignments/<bcv>/<lang>', methods=["GET"])
+def getalignments(bcv, lang):
     '''
     Returns list of positional pairs, list of Hindi words, list of strong numbers for the bcv queried. 
     '''
     connection = connect_db()
-    tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    src = lang[0:3]
+    trg = lang[3:6]
+    if trg == 'hin':
+        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    else:
+        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
     lid = getLid(bcv)
-    fb = FeedbackAligner(connection, 'grk', 'hin')
+    fb = FeedbackAligner(connection, src, trg, tablename)
     result = fb.fetch_alignment(str(lid), tablename)
 
     source_text, target_text, position_pairs, colorcode, replacement_options = parseAlignmentData(result)
 
     englishword = getEnglishWords(source_text)
-    return jsonify({'positionalpairs':position_pairs, 'hinditext':target_text,\
-     'greek':source_text, 'englishword':englishword, 'colorcode':colorcode})
+    return jsonify({'positionalpairs':position_pairs, 'targettext':target_text,\
+     'sourcetext':source_text, 'englishword':englishword, 'colorcode':colorcode})
 
 def lid_to_bcv(num_list):
     '''
@@ -1365,14 +1370,19 @@ def lid_to_bcv(num_list):
     cursor.close()
     return bcv_list
 
-@app.route('/v2/alignments/books', methods=["GET"])
-def getbooks():
+@app.route('/v2/alignments/books/<lang>', methods=["GET"])
+def getbooks(lang):
     '''
     Returns a list of books whose alignments are available
     '''
     connection = connect_db()
     cursor = connection.cursor()
-    tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    src = lang[0:3]
+    trg = lang[3:6]
+    if trg == 'hin':
+        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    else:
+        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
     cursor.execute("SELECT lid, bcv FROM bcv_lid_map_7914")
     rst_num = cursor.fetchall()
     lid_dict = {}
@@ -1470,15 +1480,21 @@ def editalignments():
     '''
     req = request.get_json(True)
     bcv = req["bcv"]
+    lang = req["lang"]
     position_pairs = req["positional_pairs"]
     connection = connect_db()
     cursor = connection.cursor()
     lid = getLid(bcv)
-    tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    src = lang[0:3]
+    trg = lang[3:6]
+    if trg == 'hin':
+        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    else:
+        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
     ppr_final_list = []
 
-    trg_table_name = 'hin_bible_concordance'
-    src_table_name = 'grk_bible_concordance'
+    trg_table_name = trg + '_bible_concordance'
+    src_table_name = src + '_bible_concordance'
 
     cursor.execute("SELECT word, occurences FROM "+ trg_table_name + \
     " WHERE occurences LIKE '" + str(lid) + "\_%'")
@@ -1538,8 +1554,8 @@ def getlexicons(strong):
     else:
         return 'No information available'
     cursor.close()
-    return jsonify({"strongs":strongs, "pronunciation":pronunciation, "greek_word":greek_word, \
-                "transliteration":transliteration, "definition":definition, "englishword":englishword})
+    return jsonify({"strongs":strongs, "pronunciation":pronunciation, "sourceword":greek_word, \
+                "transliteration":transliteration, "definition":definition, "targetword":englishword})
 
 @app.route("/v2/alignments/feedbacks", methods=["POST"])
 def approvefeedbacks():
@@ -1548,16 +1564,21 @@ def approvefeedbacks():
     """
     req = request.get_json(True)
     bcv = req["bcv"]
+    lang = req["lang"]
     positional_pairs = req["positional_pairs"]
     connection = connect_db()
-    src = 'grk'
-    trg = 'hin'
-    fb = FeedbackAligner(connection, src, trg)
+    src = lang[0:3]
+    trg = lang[3:6]
+    if trg == 'hin':
+        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    else:
+        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
+    fb = FeedbackAligner(connection, src, trg, tablename)
     cursor = connection.cursor()
     lid = getLid(bcv)
 
-    trg_table_name = 'hin_bible_concordance'
-    src_table_name = 'grk_bible_concordance'
+    trg_table_name = trg + '_bible_concordance'
+    src_table_name = src + '_bible_concordance'
 
     cursor.execute("SELECT word, occurences FROM "+ trg_table_name + \
     " WHERE occurences LIKE '" + str(lid) + "\_%'")
@@ -1587,10 +1608,16 @@ def updatealignmentverses():
     """
     req = request.get_json(True)
     bcv = req["bcv"]
+    lang = req["lang"]
     connection = connect_db()
-    tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    src = lang[0:3]
+    trg = lang[3:6]
+    if trg == 'hin':
+        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    else:
+        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
     lid = getLid(bcv)
-    fb = FeedbackAligner(connection, 'grk', 'hin')
+    fb = FeedbackAligner(connection, src, trg, tablename)
     result = fb.fetch_alignment(str(lid), tablename)
 
     source_text, target_text, position_pairs, colorcode, replacement_options = parseAlignmentData(result)
@@ -1634,8 +1661,8 @@ def updatealignmentverses():
 
     englishword = getEnglishWords(source_text)
 
-    return jsonify({'positionalpairs':final_positional_pairs, 'hinditext':target_text,\
-     'greek':source_text, 'englishword':englishword, 'colorcode':final_color_code})
+    return jsonify({'positionalpairs':final_positional_pairs, 'targettext':target_text,\
+     'sourcetext':source_text, 'englishword':englishword, 'colorcode':final_color_code})
 
 
 @app.route("/v2/alignments/export/<lang>/<book>", methods=["GET"])
@@ -1643,7 +1670,10 @@ def jsonexporter(lang, book):
     connection  = connect_db()
     src = lang[0:3]
     trg = lang[3:6]
-    tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    if trg == 'hin':
+        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    else:
+        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
     bc = getBibleBookIds()[0][book]
     je = JsonExporter(connection, src, trg, bc, tablename)
     var = je.exportAlignments()
@@ -1673,3 +1703,24 @@ def searchreference():
     else:
         return 'Incorrect Format'
 
+@app.route("/v2/alignments/languages", methods=["GET"])
+def getlanguages():
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute("SHOW TABLES LIKE '%_alignment%'")
+    rst = cursor.fetchall()
+    languagelist = {
+        'grk': 'Greek',
+        'hin': 'Hindi',
+        'mar': 'Marathi',
+        'guj': 'Gujarati'
+    }
+    languagedict = {}
+    for item in list(set(rst)):
+        split_item = item[0].split('_')
+        src = split_item[0]
+        trg = split_item[1]
+        lang = src + trg
+        alignments = '%s to %s' %(languagelist[src], languagelist[trg])
+        languagedict[lang] = alignments
+    return jsonify(languagedict)

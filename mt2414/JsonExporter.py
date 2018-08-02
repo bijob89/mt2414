@@ -118,6 +118,11 @@ class JsonExporter:
                 s_text_list[int(index) - 1] = word
             src_text_dict[int(s_key)] = ' '.join(s_text_list)
 
+        self.db.execute("SELECT lid, verse FROM " + self.grk_table)
+        grk_rst = self.db.fetchall()
+        grk_dict = {}
+        for g in grk_rst:
+            grk_dict[g[0]] = g[1]
 
         self.db.execute("SELECT word, occurences FROM " + self.trg_table)
         trg_rst = self.db.fetchall()
@@ -196,7 +201,10 @@ class JsonExporter:
         j_list2 = []
         for item in sorted(alignment_dict.keys()):
             bcv = lid_dict[item]
-            src_text = src_text_dict[item]
+            if item in grk_dict:
+                src_text = grk_dict[item]
+            else:
+                src_text = src_text_dict[item]
             trg_text = trg_text_dict[item]
             alignments = alignment_dict[item]
             source_list = [0 for i in range(len(alignments))]
