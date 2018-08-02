@@ -41,7 +41,7 @@ class FeedbackAligner:
 		if cur.rowcount==0:
 			cur.execute("CREATE TABLE "+self.FeedbackLookup_table_name+
 				" (source_word VARCHAR(50) CHARACTER SET utf8mb4 NOT NULL,target_word VARCHAR(50) CHARACTER SET utf8mb4 NOT NULL,confidence_score FLOAT(6,5))")
-			cur.execute("ALTER TABLE "+self.FeedbackLookup_table_name+" ADD UNIQUE INDEX source_word_index(source_word)")
+			cur.execute("ALTER TABLE "+self.FeedbackLookup_table_name+" ADD INDEX source_word_index(source_word)")
 			cur.execute("ALTER TABLE "+self.FeedbackLookup_table_name+" ADD INDEX target_word_index(target_word)")
 			self.db.commit()
 		
@@ -91,7 +91,7 @@ class FeedbackAligner:
 				total_verses_src_trg_NOTaligned = 0
 
 			co_occurence_confidence = total_verses_trg_word_cooccured/total_verses_src_word_occured
-			aligned_confidence = (total_verses_src_trg_aligned-total_verses_src_trg_NOTaligned) /total_verses_src_trg_aligned
+			aligned_confidence = (total_verses_src_trg_aligned-total_verses_src_trg_NOTaligned) /(total_verses_src_trg_aligned+total_verses_src_trg_NOTaligned)
 
 
 			confidence_score = 0.75*co_occurence_confidence + 0.25*aligned_confidence
