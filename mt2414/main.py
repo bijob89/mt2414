@@ -1279,19 +1279,19 @@ def parseAlignmentData(alignmentData):
         target_text[int(index) - 1] = t_text
 
     auto_alignments = []
-    for a_item in alignmentData[2]:
+    for a_item in set(list(alignmentData[2])):
         src = a_item[1].split('_')[1]
         trg = a_item[2].split('_')[1]
         auto_alignments.append(trg + '-' + src)
 
     corrected_alignments = []
-    for c_item in alignmentData[3]:
+    for c_item in set(list(alignmentData[3])):
         src = c_item[1].split('_')[1]
         trg = c_item[2].split('_')[1]
         corrected_alignments.append(trg + '-' + src)
 
     replacement_options = []
-    for r_item in alignmentData[4]:
+    for r_item in set(list(alignmentData[4])):
         src = r_item[0].split('_')[1]
         trg = r_item[1].split('_')[1]
         replacement_options.append(trg + '-' + src)
@@ -1312,20 +1312,23 @@ def getEnglishWords(strongsArray):
     connection = connect_db()
     cursor = connection.cursor()
     for sn in strongsArray:
-        cursor.execute("SELECT english FROM lid_lxn_grk_eng WHERE strong = %s", (sn.lower(),))
-        rst_sn = cursor.fetchone()
-        if rst_sn and '-' not in rst_sn[0]:
-            englishword.append(rst_sn[0])
-        else:
-            id = int(sn[1:-1])
-            if id not in english_dict:
-                cursor.execute("SELECT englishword FROM lxn_gre_eng WHERE id = %s", (id,))
-                rst_eng = cursor.fetchone()
-                eng_word = '* ' + ', '.join([' '.join(x.strip().split(' ')[0:-1]) \
-                                                            for x in rst_eng[0].split(',')[0:4]])
-                english_dict[id] = eng_word
+        id = int(sn[1:-1])
+        if id not in english_dict:
+            cursor.execute("SELECT english FROM lid_lxn_grk_eng WHERE strong = %s", (sn.lower(),))
+            rst_sn = cursor.fetchone()
+            if rst_sn and '-' not in rst_sn[0]:
+                englishword.append(rst_sn[0])
+                eng_word = rst_sn
             else:
-                eng_word = english_dict[id]                                                                
+                id = int(sn[1:-1])
+                if id not in english_dict:
+                    cursor.execute("SELECT englishword FROM lxn_gre_eng WHERE id = %s", (id,))
+                    rst_eng = cursor.fetchone()
+                    eng_word = '* ' + ', '.join([' '.join(x.strip().split(' ')[0:-1]) \
+                                                                for x in rst_eng[0].split(',')[0:4]])
+            english_dict[id] = eng_word
+        else:
+            eng_word = english_dict[id]
             englishword.append(eng_word)
     cursor.close()
     return englishword
