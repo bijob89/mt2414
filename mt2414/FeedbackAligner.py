@@ -7,6 +7,8 @@ import os.path
 import itertools
 import pymysql
 
+from TW_strongs_ref_lookup import TWs 
+
 
 class FeedbackAligner:
 	def __init__(self,db,src,trg,tablename):
@@ -376,6 +378,123 @@ class FeedbackAligner:
 			# self.update_all_alignment_by_word(src_word_to_update)
 
 
+	def fetch_aligned_TWs(self,tw_index,strong_list,refs_list,cur):
+		LIDs_dict = {}
+		BCVs_dict = {}
+		strong_list_edited = [x[1:] for x in strong_list]
+		
+		return_list = {}
+		
+		try:
+			for bcv in refs_list:
+				cur.execute("select lid from bcv_lid_map_7914 where bcv='"+bcv+"'")
+				if cur.rowcount>0:
+					lid = cur.fetchone()[0]
+					# print("lid:"+str(lid))
+					LIDs_dict[bcv] = lid
+					BCVs_dict[lid] = bcv
+			LIDs_list = BCVs_dict.keys()
+			BCVs_list = LIDs_dict.keys()
+			for l in LIDs_list:
+				cur.execute("select occurences, word from "+self.src_table_name+" where occurences like '"+str(l)+"%'")
+				source_words = [(x[0],x[1]) for x in cur.fetchall() ]
+
+				cur.execute("select occurences, word from "+self.trg_table_name+" where occurences like '"+str(l)+"%'")
+				target_words = [(x[0],x[1]) for x in cur.fetchall() ]
+
+				# print("source_words:"+str(source_words))
+				# print("target_words:"+str(target_words))
+
+
+				present_strongs = []
+				aligned_trg_occs = {}
+				for wrd in source_words:
+					if wrd[1] in strong_list_edited:
+						present_strongs.append(wrd)
+				present_strongs.sort()
+
+				if (len(present_strongs)>0):
+					
+					for ps in present_strongs: 
+
+						cur.execute("select target_wordID,word from "+self.alignment_table_name+" , "+self.trg_table_name+" where source_wordID='"+ps[0]+"' and occurences=target_wordID order by target_wordID")
+						# if cur.rowcount > 0 :
+						# print(cur.fetchall())
+						retrived = [(x[0],x[1]) for x in cur.fetchall()]
+						if len(retrived)>0:
+								if BCVs_dict[l] in return_list:
+									# print("***********Came here once************")
+									return_list[BCVs_dict[l] ]["strongs"].append(ps)
+									return_list[BCVs_dict[l] ]["target"] += retrived
+									print()
+								else:
+									return_list[BCVs_dict[l]] = {}
+									return_list[BCVs_dict[l] ]["strongs"] = [ps]
+									return_list[BCVs_dict[l] ]["target"] = retrived
+							
+				if BCVs_dict[l] in return_list:
+					temp_trg = return_list[BCVs_dict[l] ]["target"]
+					temp_strongs = return_list[BCVs_dict[l] ]["strongs"]
+					trg_string = ""
+					pre_pos = -1
+					for trg in temp_trg:
+						pos = int(trg[0].split("_")[1])
+						if pre_pos != -1:
+							for i in range(pre_pos,pos):
+								trg_string += " ."
+						trg_string += " " +trg[1]
+						pre_pos = pos
+					trg_string = trg_string.strip()
+
+					strongs_string = ""
+					pre_pos = -1
+					for strongs in temp_strongs:
+						pos = int(strongs[0].split("_")[1])
+						if pre_pos != -1:
+							for i in range(pre_pos,pos):
+								strongs_string += " ."
+						strongs_string += " " +strongs[1]
+						pre_pos = pos
+					strongs_string = strongs_string.strip()
+					# print(trg_string+" --- "+strongs_string)
+					
+
+					return_list[BCVs_dict[l] ]=(strongs_string,trg_string)
+
+
+
+
+					 
+		except Exception as e:
+			print(temp_trg)
+			raise e
+		
+
+
+		return return_list
+
+
+
+
+	def fetch_all_TW_alignments(self):
+		cur = self.db.cursor()
+
+		return_dict_of_aligned_words = {}
+		for tw in TWs:
+			strong_list = TWs[tw]["strongs"]
+			refs_list = TWs[tw]["References"]
+			return_list = self.fetch_aligned_TWs(tw,strong_list,refs_list,cur)
+			return_dict_of_aligned_words[tw] = return_list
+			# print(return_dict_of_aligned_words)
+			# if tw==2:
+			# 	break
+
+		cur.close()
+		return return_dict_of_aligned_words
+
+
+
+
 
 if __name__ == '__main__':
 	if len(sys.argv)==3:
@@ -412,6 +531,9 @@ if __name__ == '__main__':
 
 	# obj.update_alignment_on_verse('23146')
 	
-	obj.save_alignment(123,[("xxx","YYY")],'testcase')
+	# obj.save_alignment(123,[("xxx","YYY")],'testcase')
+
+	TW_alignments = obj.fetch_all_TW_alignments()
+	print(TW_alignments)
 
 	del obj
