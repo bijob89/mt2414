@@ -1333,6 +1333,17 @@ def getEnglishWords(strongsArray):
     cursor.close()
     return englishword
 
+def getTableName(src, trg):
+    if trg == 'hin':
+        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
+    elif trg == 'mal':
+        tablename = '%s_%s_sw_stm_ne_giza___alignment' %(src, trg)
+    elif trg == 'urd' or trg == 'tam' or trg == 'odi' or trg == 'asm':
+        tablename = '%s_%s____giza___alignment' %(src, trg)
+    else:
+        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
+    return tablename
+
 @app.route('/v2/alignments/<bcv>/<lang>', methods=["GET"])
 def getalignments(bcv, lang):
     '''
@@ -1341,12 +1352,7 @@ def getalignments(bcv, lang):
     connection = connect_db()
     src = lang[0:3]
     trg = lang[3:6]
-    if trg == 'hin':
-        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
-    elif trg == 'mal':
-        tablename = '%s_%s_sw_stm_ne_giza___alignment' %(src, trg)
-    else:
-        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
+    tablename = getTableName(src, trg)
     lid = getLid(bcv)
     fb = FeedbackAligner(connection, src, trg, tablename)
     result = fb.fetch_alignment(str(lid), tablename)
@@ -1384,12 +1390,7 @@ def getbooks(lang):
     cursor = connection.cursor()
     src = lang[0:3]
     trg = lang[3:6]
-    if trg == 'hin':
-        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
-    elif trg == 'mal':
-        tablename = '%s_%s_sw_stm_ne_giza___alignment' %(src, trg)
-    else:
-        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
+    tablename = getTableName(src, trg)
     cursor.execute("SELECT lid, bcv FROM bcv_lid_map_7914")
     rst_num = cursor.fetchall()
     lid_dict = {}
@@ -1494,12 +1495,7 @@ def editalignments():
     lid = getLid(bcv)
     src = lang[0:3]
     trg = lang[3:6]
-    if trg == 'hin':
-        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
-    elif trg == 'mal':
-        tablename = '%s_%s_sw_stm_ne_giza___alignment' %(src, trg)
-    else:
-        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
+    tablename = getTableName(src, trg)
     ppr_final_list = []
 
     trg_table_name = trg + '_bible_concordance'
@@ -1578,12 +1574,7 @@ def approvefeedbacks():
     connection = connect_db()
     src = lang[0:3]
     trg = lang[3:6]
-    if trg == 'hin':
-        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
-    elif trg == 'mal':
-        tablename = '%s_%s_sw_stm_ne_giza___alignment' %(src, trg)
-    else:
-        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
+    tablename = getTableName(src, trg)
     fb = FeedbackAligner(connection, src, trg, tablename)
     cursor = connection.cursor()
     lid = getLid(bcv)
@@ -1602,12 +1593,30 @@ def approvefeedbacks():
     src_list = db_text_to_list(s_result)
 
     feedback_list = []
+    src_dict = {}
+    trg_dict = {}
     for item in positional_pairs:
         if '255' not in item:
             trg_pos, src_pos = item.split('-')
             trg_pos = int(trg_pos) - 1
             src_pos = int(src_pos) - 1
-            feedback_list.append((src_list[src_pos], trg_list[trg_pos]))
+            src_word = src_list[src_pos]
+            trg_word = trg_list[trg_pos]
+            if src_word in src_dict:
+                src_dict[src_word] = src_dict[src_word] + ',' + trg_word
+            else:
+                src_dict[src_word] = trg_word
+            if trg_word in trg_dict:
+                trg_dict[trg_word] = trg_dict[trg_word] + ',' + src_word
+            else:
+                trg_dict[trg_word] = src_word
+    for k,v in src_dict.items():
+        if v in trg_dict:
+            if trg_dict[v] != k:
+                if k not in trg_dict[v].split(','):
+                    trg_dict[v] = trg_dict[v] + ',' + k
+    for s_k, s_v in trg_dict.items():
+        feedback_list.append((' '.join(s_v.split(',')), ' '.join(s_k.split(','))))
     fb.on_approve_feedback(feedback_list)
     cursor.close()
     return 'Saved'
@@ -1623,12 +1632,7 @@ def updatealignmentverses():
     connection = connect_db()
     src = lang[0:3]
     trg = lang[3:6]
-    if trg == 'hin':
-        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
-    elif trg == 'mal':
-        tablename = '%s_%s_sw_stm_ne_giza___alignment' %(src, trg)
-    else:
-        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
+    tablename = getTableName(src, trg)
     lid = getLid(bcv)
     fb = FeedbackAligner(connection, src, trg, tablename)
     result = fb.fetch_alignment(str(lid), tablename)
@@ -1683,12 +1687,7 @@ def jsonexporter(lang, book):
     connection  = connect_db()
     src = lang[0:3]
     trg = lang[3:6]
-    if trg == 'hin':
-        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
-    elif trg == 'mal':
-        tablename = '%s_%s_sw_stm_ne_giza___alignment' %(src, trg)
-    else:
-        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
+    tablename = getTableName(src, trg)
     bc = getBibleBookIds()[0][book]
     je = JsonExporter(connection, src, trg, bc, tablename)
     var = je.exportAlignments()
@@ -1729,7 +1728,13 @@ def getlanguages():
         'hin': 'Hindi',
         'mar': 'Marathi',
         'guj': 'Gujarati',
-        'mal': 'Malayalam'
+        'mal': 'Malayalam',
+        'odi': 'Odiya',
+        'pun': 'Punjabi',
+        'asm': 'Assamese',
+        'ben': 'Bengali',
+        'tam': 'Tamil',
+        'urd': 'Urdu'
     }
     languagedict = {}
     for item in list(set(rst)):
@@ -1740,3 +1745,15 @@ def getlanguages():
         alignments = languagelist[trg]
         languagedict[lang] = alignments
     return jsonify(languagedict)
+
+
+@app.route("/v2/alignments/translationwords/<lang>", methods=["GET"])
+def getTranslationWords(lang):
+    connection = connect_db()
+    src = lang[0:3]
+    trg = lang[3:6]
+    tablename = getTableName(src, trg)
+    fb = FeedbackAligner(connection, src, trg, tablename)
+    TW = fb.fetch_all_TW_alignments()
+    return jsonify(TW)
+

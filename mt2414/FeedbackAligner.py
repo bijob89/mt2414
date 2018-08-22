@@ -7,7 +7,7 @@ import os.path
 import itertools
 import pymysql
 
-from TW_strongs_ref_lookup import TWs 
+from .TW_strongs_ref_lookup import TWs
 
 
 class FeedbackAligner:
