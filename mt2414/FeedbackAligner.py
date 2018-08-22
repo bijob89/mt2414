@@ -5,6 +5,7 @@
 import re, sys, pickle
 import os.path 
 import itertools
+import time, json
 import pymysql
 
 from TW_strongs_ref_lookup import TWs 
@@ -426,7 +427,7 @@ class FeedbackAligner:
 									# print("***********Came here once************")
 									return_list[BCVs_dict[l] ]["strongs"].append(ps)
 									return_list[BCVs_dict[l] ]["target"] += retrived
-									print()
+									# print()
 								else:
 									return_list[BCVs_dict[l]] = {}
 									return_list[BCVs_dict[l] ]["strongs"] = [ps]
@@ -459,7 +460,7 @@ class FeedbackAligner:
 					# print(trg_string+" --- "+strongs_string)
 					
 
-					return_list[BCVs_dict[l] ]=(strongs_string,trg_string)
+					return_list[BCVs_dict[l] ]=str((strongs_string,trg_string))
 
 
 
@@ -484,13 +485,14 @@ class FeedbackAligner:
 			strong_list = TWs[tw]["strongs"]
 			refs_list = TWs[tw]["References"]
 			return_list = self.fetch_aligned_TWs(tw,strong_list,refs_list,cur)
-			return_dict_of_aligned_words[tw] = return_list
+			return_dict_of_aligned_words[str(tw)] = return_list
 			# print(return_dict_of_aligned_words)
 			# if tw==2:
 			# 	break
 
 		cur.close()
-		return return_dict_of_aligned_words
+		return json.dumps(return_dict_of_aligned_words,  ensure_ascii=False)
+		# return return_dict_of_aligned_words
 
 
 
@@ -516,7 +518,8 @@ if __name__ == '__main__':
 	master_table = src+"_"+trg+"_alignment"
 	obj = FeedbackAligner(connection, src,trg,master_table)
 
-
+	start = time.clock()
+	
 	# obj.on_approve_feedback([("2424 5547","यीशु मसीह"),("5207","सन्तान"),("5257 5547","मसीह . सेवक")])
 
 	# src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment('23146','grk_hin_sw_stm_ne_giza_tw__alignment')
@@ -536,4 +539,5 @@ if __name__ == '__main__':
 	TW_alignments = obj.fetch_all_TW_alignments()
 	print(TW_alignments)
 
+	print("Time taken:"+str(time.clock()-start))
 	del obj
