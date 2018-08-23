@@ -1338,8 +1338,11 @@ def getTableName(src, trg):
         tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
     elif trg == 'mal':
         tablename = '%s_%s_sw_stm_ne_giza___alignment' %(src, trg)
-    elif trg == 'urd' or trg == 'tam' or trg == 'odi' or trg == 'asm':
+    elif trg == 'urd' or trg == 'tam' or trg == 'odi' or trg == 'asm' or trg == 'tam'\
+    or trg == 'urd' or trg == 'kan':
         tablename = '%s_%s____giza___alignment' %(src, trg)
+    elif trg == 'tel':
+        tablename = '%s_%s_sw___giza___alignment' %(src, trg)
     else:
         tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
     return tablename
@@ -1734,7 +1737,9 @@ def getlanguages():
         'asm': 'Assamese',
         'ben': 'Bengali',
         'tam': 'Tamil',
-        'urd': 'Urdu'
+        'urd': 'Urdu',
+        'tel': 'Telugu',
+        'kan': 'Kannada'
     }
     languagedict = {}
     for item in list(set(rst)):
