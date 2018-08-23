@@ -494,6 +494,22 @@ class FeedbackAligner:
 		return json.dumps(return_dict_of_aligned_words,  ensure_ascii=False)
 		# return return_dict_of_aligned_words
 
+	def fetch_seleted_TW_alignments(self,tw_index_list):
+		cur = self.db.cursor()
+
+		return_dict_of_aligned_words = {}
+		for tw in tw_index_list:
+			strong_list = TWs[tw]["strongs"]
+			refs_list = TWs[tw]["References"]
+			return_list = self.fetch_aligned_TWs(tw,strong_list,refs_list,cur)
+			return_dict_of_aligned_words[str(tw)] = return_list
+			# print(return_dict_of_aligned_words)
+			# if tw==2:
+			# 	break
+
+		cur.close()
+		return json.dumps(return_dict_of_aligned_words,  ensure_ascii=False)
+
 
 
 
@@ -536,7 +552,11 @@ if __name__ == '__main__':
 	
 	# obj.save_alignment(123,[("xxx","YYY")],'testcase')
 
-	TW_alignments = obj.fetch_all_TW_alignments()
+	# TW_alignments = obj.fetch_all_TW_alignments()
+	TW_alignments = obj.fetch_seleted_TW_alignments([1,2,3,4,5])
+
+	TW_alignments = obj.fetch_seleted_TW_alignments(range(1,6))
+
 	print(TW_alignments)
 
 	print("Time taken:"+str(time.clock()-start))
