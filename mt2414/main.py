@@ -1752,13 +1752,15 @@ def getlanguages():
     return jsonify(languagedict)
 
 
-@app.route("/v2/alignments/translationwords/<lang>", methods=["GET"])
-def getTranslationWords(lang):
+@app.route("/v2/alignments/translationwords/<lang>/<index>", methods=["GET"])
+def getTranslationWords(lang, index):
     connection = connect_db()
     src = lang[0:3]
     trg = lang[3:6]
+    first = int(index.split('-')[0])
+    last = int(index.split('-')[1]) + 1
     tablename = getTableName(src, trg)
     fb = FeedbackAligner(connection, src, trg, tablename)
-    TW = fb.fetch_all_TW_alignments()
+    TW = fb.fetch_seleted_TW_alignments(range(first, last))
     return jsonify(TW)
 
