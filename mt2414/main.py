@@ -1317,19 +1317,19 @@ def getEnglishWords(strongsArray):
             cursor.execute("SELECT english FROM lid_lxn_grk_eng WHERE strong = %s", (sn.lower(),))
             rst_sn = cursor.fetchone()
             if rst_sn and '-' not in rst_sn[0]:
-                englishword.append(rst_sn[0])
                 eng_word = rst_sn
             else:
                 id = int(sn[1:-1])
+                strongsnumber = 'g' + str(id)
                 if id not in english_dict:
-                    cursor.execute("SELECT englishword FROM lxn_gre_eng WHERE id = %s", (id,))
+                    cursor.execute("SELECT englishword FROM lxn_gre_eng WHERE strongsnumber = %s", (strongsnumber,))
                     rst_eng = cursor.fetchone()
                     eng_word = '* ' + ', '.join([' '.join(x.strip().split(' ')[0:-1]) \
                                                                 for x in rst_eng[0].split(',')[0:4]])
             english_dict[id] = eng_word
         else:
             eng_word = english_dict[id]
-            englishword.append(eng_word)
+        englishword.append(eng_word)
     cursor.close()
     return englishword
 
