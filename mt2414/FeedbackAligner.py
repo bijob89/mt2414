@@ -8,7 +8,7 @@ import itertools
 import time, json
 import pymysql
 
-from .TW_strongs_ref_lookup import TWs
+from TW_strongs_ref_lookup import TWs 
 
 
 class FeedbackAligner:
@@ -323,7 +323,7 @@ class FeedbackAligner:
 				if drop:
 					break
 
-		print(replacement_options)
+		# print(replacement_options)
 
 
 
@@ -350,7 +350,28 @@ class FeedbackAligner:
 		trg_word_list = []
 		for row in cur.fetchall():
 			trg_word_list.append((row[0],row[1]))
-		
+
+		temp_src_word_list = src_word_list
+		src_word_list = []
+		for i,src_pair in enumerate(temp_src_word_list):
+			# print(src_pair)
+			# print("SELECT english FROM lid_lxn_grk_eng WHERE lid = LEFT('"+src_pair[1]+"',5) and strong = CONCAT('g',LPAD('"+src_pair[0]+"',4,'0'),'0') ")
+			cur.execute("SELECT english FROM lid_lxn_grk_eng WHERE lid = LEFT('"+src_pair[1]+"',5) and strong = CONCAT('g',LPAD('"+src_pair[0]+"',4,'0'),'0') ")
+			if cur.rowcount==0:
+				src_word_list.append((src_pair[0],src_pair[1],""))
+			elif cur.rowcount==1:
+				src_word_list.append((src_pair[0],src_pair[1],cur.fetchone()[0]))
+			else:
+				eng_list = [x[0] for x in cur.fetchall()]
+				strng_in_src_list = []
+				for j,pair in enumerate(temp_src_word_list):
+					if pair[0] == src_pair[0]:
+						strng_in_src_list.append(j)
+				aligned_eng = eng_list[strng_in_src_list.index(i)]
+				src_word_list.append((src_pair[0],src_pair[1],aligned_eng))
+
+
+
 
 		# get the alignments from specified table
 		cur.execute("SELECT * from "+auto_alignmenttable+" WHERE lid='"+lid+"'")
@@ -538,8 +559,8 @@ if __name__ == '__main__':
 	
 	# obj.on_approve_feedback([("2424 5547","यीशु मसीह"),("5207","सन्तान"),("5257 5547","मसीह . सेवक")])
 
-	# src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment('23146','grk_hin_sw_stm_ne_giza_tw__alignment')
-	# print("src_word_list:"+str(src_word_list))
+	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment('23146','grk_hin_sw_stm_ne_giza_tw__alignment')
+	print("src_word_list:"+str(src_word_list))
 	# print("trg_word_list:"+str(trg_word_list))
 	# print("auto_alignments:"+str(auto_alignments))
 	# print("corrected_alignments:"+str(corrected_alignments))
@@ -553,11 +574,11 @@ if __name__ == '__main__':
 	# obj.save_alignment(123,[("xxx","YYY")],'testcase')
 
 	# TW_alignments = obj.fetch_all_TW_alignments()
-	TW_alignments = obj.fetch_seleted_TW_alignments([1,2,3,4,5])
+	# TW_alignments = obj.fetch_seleted_TW_alignments([1,2,3,4,5])
 
-	TW_alignments = obj.fetch_seleted_TW_alignments(range(1,6))
+	# TW_alignments = obj.fetch_seleted_TW_alignments(range(1,6))
 
-	print(TW_alignments)
+	# print(TW_alignments)
 
 	print("Time taken:"+str(time.clock()-start))
 	del obj
