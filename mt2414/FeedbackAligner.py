@@ -351,14 +351,19 @@ class FeedbackAligner:
 		for row in cur.fetchall():
 			trg_word_list.append((row[0],row[1]))
 
+		
+		# get aligned Eng(ULB) text for src(Greek)
 		temp_src_word_list = src_word_list
 		src_word_list = []
 		for i,src_pair in enumerate(temp_src_word_list):
-			# print(src_pair)
-			# print("SELECT english FROM lid_lxn_grk_eng WHERE lid = LEFT('"+src_pair[1]+"',5) and strong = CONCAT('g',LPAD('"+src_pair[0]+"',4,'0'),'0') ")
-			cur.execute("SELECT english FROM lid_lxn_grk_eng WHERE lid = LEFT('"+src_pair[1]+"',5) and strong = CONCAT('g',LPAD('"+src_pair[0]+"',4,'0'),'0') ")
+			
+			cur.execute("SELECT a.lid FROM bcv_lid_map_7957 as a INNER JOIN bcv_lid_map_7914 as b on a.bcv =b.bcv where b.lid=LEFT('"+src_pair[1]+"',5)")
+			lid_7957set = cur.fetchone()[0]
+
+
+			cur.execute("SELECT english FROM lid_lxn_grk_eng WHERE lid = '"+str(lid_7957set)+"' and strong = CONCAT('g',LPAD('"+src_pair[0]+"',4,'0'),'0') ")
 			if cur.rowcount==0:
-				src_word_list.append((src_pair[0],src_pair[1],""))
+				src_word_list.append((src_pair[0],src_pair[1],"--"))
 			elif cur.rowcount==1:
 				src_word_list.append((src_pair[0],src_pair[1],cur.fetchone()[0]))
 			else:
@@ -559,7 +564,7 @@ if __name__ == '__main__':
 	
 	# obj.on_approve_feedback([("2424 5547","यीशु मसीह"),("5207","सन्तान"),("5257 5547","मसीह . सेवक")])
 
-	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment('23146','grk_hin_sw_stm_ne_giza_tw__alignment')
+	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment('26021','grk_hin_sw_stm_ne_giza_tw__alignment')
 	print("src_word_list:"+str(src_word_list))
 	# print("trg_word_list:"+str(trg_word_list))
 	# print("auto_alignments:"+str(auto_alignments))
