@@ -1267,10 +1267,12 @@ def getLid(bcv):
 
 def parseAlignmentData(alignmentData):
     source_text = ['' for i in range(len(alignmentData[0]))]
+    englishword = ['' for i in range(len(alignmentData[0]))]
     for s_item in alignmentData[0]:
         index = s_item[1].split('_')[1]
         s_text = 'G' + s_item[0].zfill(4) + '0'
         source_text[int(index) - 1] = s_text
+        englishword[int(index) - 1] = s_item[2]
 
     target_text = ['' for i in range(len(alignmentData[1]))]
     for t_item in alignmentData[1]:
@@ -1295,13 +1297,14 @@ def parseAlignmentData(alignmentData):
         src = r_item[0].split('_')[1]
         trg = r_item[1].split('_')[1]
         replacement_options.append(trg + '-' + src)
-
     position_pairs = corrected_alignments + \
                             [x for x in auto_alignments if x not in corrected_alignments]
     colorcode = [1 for i in range(len(corrected_alignments))] + \
                             [0 for i in range(len(position_pairs) - len(corrected_alignments))]
 
-    return (source_text, target_text, position_pairs, colorcode, replacement_options)
+    final_position_pairs = position_pairs + [y for y in replacement_options if y not in position_pairs]
+    colorcode = colorcode + [2 for i in range(len(final_position_pairs) - len(position_pairs))]
+    return (source_text, target_text, final_position_pairs, colorcode, replacement_options, englishword)
 
 def getEnglishWords(strongsArray):
     '''
@@ -1360,9 +1363,8 @@ def getalignments(bcv, lang):
     fb = FeedbackAligner(connection, src, trg, tablename)
     result = fb.fetch_alignment(str(lid), tablename)
 
-    source_text, target_text, position_pairs, colorcode, replacement_options = parseAlignmentData(result)
+    source_text, target_text, position_pairs, colorcode, replacement_options, englishword = parseAlignmentData(result)
 
-    englishword = getEnglishWords(source_text)
     return jsonify({'positionalpairs':position_pairs, 'targettext':target_text,\
      'sourcetext':source_text, 'englishword':englishword, 'colorcode':colorcode})
 
@@ -1640,7 +1642,7 @@ def updatealignmentverses():
     fb = FeedbackAligner(connection, src, trg, tablename)
     result = fb.fetch_alignment(str(lid), tablename)
 
-    source_text, target_text, position_pairs, colorcode, replacement_options = parseAlignmentData(result)
+    source_text, target_text, position_pairs, colorcode, replacement_options, englishword = parseAlignmentData(result)
 
     position_pair_dict = {}
 
