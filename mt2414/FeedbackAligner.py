@@ -365,13 +365,13 @@ class FeedbackAligner:
 
 			cur.execute("SELECT english FROM lid_lxn_grk_eng WHERE lid = '"+str(lid_7957set)+"' and strong = CONCAT('g',LPAD('"+src_pair[0]+"',4,'0'),'0') ")
 			# print("SELECT english FROM lid_lxn_grk_eng WHERE lid = '"+str(lid_7957set)+"' and strong = CONCAT('g',LPAD('"+src_pair[0]+"',4,'0'),'0') ")
-
-			if cur.rowcount==0:
+			query_result = cur.fetchall()
+			if len(query_result)==0:
 				src_word_list.append((src_pair[0],src_pair[1],"--"))
-			elif cur.rowcount==1:
-				src_word_list.append((src_pair[0],src_pair[1],cur.fetchone()[0]))
+			elif len(query_result)==1:
+				src_word_list.append((src_pair[0],src_pair[1],query_result[0]))
 			else:
-				eng_list = [x[0] for x in cur.fetchall()]
+				eng_list = [x[0] for x in query_result]
 				strng_in_src_list = []
 				for j,pair in enumerate(temp_src_word_list):
 					if pair[0] == src_pair[0]:
@@ -384,7 +384,7 @@ class FeedbackAligner:
 					src_word_list.append((src_pair[0],src_pair[1],aligned_eng))
 				else:
 					# not the correct solution. but added to remove the unexplained error
-					src_word_list.append((src_pair[0],src_pair[1],cur.fetchone()[0]))	
+					src_word_list.append((src_pair[0],src_pair[1],query_result[0]))	
 
 
 
