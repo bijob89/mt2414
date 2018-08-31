@@ -1362,11 +1362,32 @@ def getalignments(bcv, lang):
     lid = getLid(bcv)
     fb = FeedbackAligner(connection, src, trg, tablename)
     result = fb.fetch_alignment(str(lid), tablename)
-
     source_text, target_text, position_pairs, colorcode, replacement_options, englishword = parseAlignmentData(result)
-
+    cursor = connection.cursor()
+    cursor.execute("SELECT word, occurences FROM grk_bible_concordance \
+     WHERE occurences LIKE '" + str(lid) + "\_%'")
+    s_result = cursor.fetchall()
+    src_list = db_text_to_list(s_result)
+    lexicandata = {}
+    for word in src_list:
+        cursor.execute("SELECT * FROM lxn_gre_eng WHERE id = %s", (word,))
+        rst = cursor.fetchone()
+        if rst:
+            strongs = rst[0]
+            pronunciation = rst[1]
+            greek_word = rst[2]
+            transliteration = rst[3]
+            definition = rst[4]
+            englishword = rst[6]
+            pattern = {"strongs":strongs, "pronunciation":pronunciation, "sourceword":greek_word, \
+                "transliteration":transliteration, "definition":definition, "targetword":englishword}
+            
+            word = 'G' + word.zfill(4) + '0'
+            if word not in lexicandata:
+                lexicandata[word] = pattern
+    cursor.close()
     return jsonify({'positionalpairs':position_pairs, 'targettext':target_text,\
-     'sourcetext':source_text, 'englishword':englishword, 'colorcode':colorcode})
+     'sourcetext':source_text, 'englishword':englishword, 'colorcode':colorcode, 'lexicondata': lexicandata})
 
 def lid_to_bcv(num_list):
     '''
