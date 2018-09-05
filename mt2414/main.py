@@ -1272,7 +1272,7 @@ def parseAlignmentData(alignmentData):
         index = s_item[1].split('_')[1]
         s_text = 'G' + s_item[0].zfill(4) + '0'
         source_text[int(index) - 1] = s_text
-        englishword[int(index) - 1] = s_item[2]
+        englishword[int(index) - 1] = ''.join(s_item[2])
 
     target_text = ['' for i in range(len(alignmentData[1]))]
     for t_item in alignmentData[1]:
@@ -1378,9 +1378,9 @@ def getalignments(bcv, lang):
             greek_word = rst[2]
             transliteration = rst[3]
             definition = rst[4]
-            englishword = rst[6]
+            english = rst[6]
             pattern = {"strongs":strongs, "pronunciation":pronunciation, "sourceword":greek_word, \
-                "transliteration":transliteration, "definition":definition, "targetword":englishword}
+                "transliteration":transliteration, "definition":definition, "targetword":english}
             
             word = 'G' + word.zfill(4) + '0'
             if word not in lexicandata:
