@@ -1519,6 +1519,7 @@ def db_text_to_list(value):
     return text_list
 
 @app.route('/v2/alignments', methods=["POST"])
+@check_token
 def editalignments():
     '''
     Recieves BCV and list of positional pairs as input. The old positional pairs
@@ -1533,9 +1534,9 @@ def editalignments():
     lid = getLid(bcv)
     src = lang[0:3]
     trg = lang[3:6]
-    tablename = getTableName(src, trg)
+    tablename = "%s_%s_alignment" %(src, trg)
     ppr_final_list = []
-
+    user = request.email
     trg_table_name = trg + '_bible_concordance'
     src_table_name = src + '_bible_concordance'
 
@@ -1565,10 +1566,9 @@ def editalignments():
         else:
             if int(t_wordid) <= len(trg_list):
                 target_wordid = str(lid) + '_' + t_wordid
-        ppr_final_list.append([lid, source_wordid, target_wordid])
-    for ppr in ppr_final_list:
-        cursor.execute("INSERT INTO " + tablename + " (lid,  source_wordID, target_wordID\
-        ) VALUES (%s, %s, %s)", (ppr[0], ppr[1], ppr[2]))
+        ppr_final_list.append((source_wordid, target_wordid))
+    fb = FeedbackAligner(connection, src, trg, tablename)
+    fb.save_alignment(lid, ppr_final_list, user)
     connection.commit()
     cursor.close()
     return 'Saved'
@@ -1601,6 +1601,7 @@ def getlexicons(strong):
                 "transliteration":transliteration, "definition":definition, "targetword":englishword})
 
 @app.route("/v2/alignments/feedbacks", methods=["POST"])
+@check_token
 def approvefeedbacks():
     """
     Inserts the  alignment into the feedback loop up table
@@ -1660,6 +1661,7 @@ def approvefeedbacks():
     return 'Saved'
 
 @app.route("/v2/alignments/feedbacks/verses", methods=["POST"])
+@check_token
 def updatealignmentverses():
     """
     Updates alignment for a verse from the feedback loop up table

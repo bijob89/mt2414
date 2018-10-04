@@ -158,8 +158,8 @@ class FeedbackAligner:
 		for pair in word_pairs:
 			#calculate confidence
 
-			cur.execute("INSERT INTO "+self.alignment_table_name+" (lid,source_wordID,target_wordID,user) VALUES (%s,%s,%s,'default')",
-				(lid, pair[0],pair[1]))
+			cur.execute("INSERT INTO "+self.alignment_table_name+" (lid,source_wordID,target_wordID,user) VALUES (%s,%s,%s,%s)",
+				(lid, pair[0],pair[1], user))
 
 		self.db.commit()
 
