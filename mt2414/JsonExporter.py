@@ -7,9 +7,11 @@ class JsonExporter:
         self.db = db.cursor()
         self.src = src
         self.trg = trg
-        self.tablename = tablename #self.src + '_' + self.trg + '_' + 'alignment'
+        self.master_table = self.src + '_' + self.trg + '_alignment'
+        self.tablename = tablename
         self.src_table = self.src + '_bible_concordance'
         self.trg_table = self.trg + '_bible_concordance'
+        self.trg_text_table = 'bib_' + self.trg + '_irv'
         self.grk_table = 'lid_grk_text'
         self.bc = bookcode
 
@@ -42,7 +44,6 @@ class JsonExporter:
 
     def segmentResourceArray(self, r_list):
         '''Resource Array for a verse'''
-        # print(r_list)
         resources = {
             "r0": self.segmentResourceValue([r_list[0], r_list[1]]),
             "r1": self.segmentResourceValue([r_list[0], r_list[2]])
@@ -60,9 +61,8 @@ class JsonExporter:
     def segmentArrayElements(self, s_list):
         '''List of resources and alignment tuple'''
         segmentArrayList = []
-        # print(len(s_list))
         for item in s_list:
-            value = self.generateSegmentList(item)#(self.segmentResourceArray(item[0]), self.alignmentarrayelements(item[1]))
+            value = self.generateSegmentList(item)
             segmentArrayelement = {
                 "resources": value[0],
                 "alignments": value[1]
@@ -91,6 +91,17 @@ class JsonExporter:
         }
         return metadata
 
+    def generatePositionalPairs(self, table):
+        self.db.execute("SELECT lid, source_wordID, target_wordID FROM " + table)
+        ppr_rst = self.db.fetchall()
+        ppr_dict = {}
+        for items in ppr_rst:
+            if items[0] in ppr_dict:
+                ppr_dict[items[0]] = ppr_dict[items[0]] + [items[1].split('_')[1] \
+                + '-' + items[2].split('_')[1]]
+            else:
+                ppr_dict[items[0]] = [items[1].split('_')[1] + '-' + items[2].split('_')[1]]
+        return ppr_dict
 
     def exportAlignments(self):
 
@@ -142,59 +153,66 @@ class JsonExporter:
                 t_text_list[int(index) - 1] = word
             trg_text_dict[int(t_key)] = ' '.join(t_text_list)
 
-        self.db.execute("SELECT lid, source_wordID, target_wordID FROM " + self.tablename)
-        ppr_rst = self.db.fetchall()
-        ppr_dict = {}
-        for items in ppr_rst:
-            if items[0] in ppr_dict:
-                ppr_dict[items[0]] = ppr_dict[items[0]] + [items[1].split('_')[1] \
-                + '-' + items[2].split('_')[1]]
-            else:
-                ppr_dict[items[0]] = [items[1].split('_')[1] + '-' + items[2].split('_')[1]]
+        self.db.execute("SELECT bcv, verse from " + self.trg_text_table)
+        rst_trg_text = self.db.fetchall()
+        trg_text_dt = {}
+        for tt in rst_trg_text:
+            trg_text_dt[tt[0]] = tt[1]
+
+        master_ppr_dict = self.generatePositionalPairs(self.master_table)
+        auto_ppr_dict = self.generatePositionalPairs(self.tablename)
 
         alignment_dict = {}
         previous = int(self.bc) * 1000000
         next = (int(self.bc) + 1) * 1000000
+
+        self.db.execute("SELECT bcv from bcv_lid_map_7914 WHERE bcv > %s AND bcv < %s", (previous, next))
+        rst_bcvs = self.db.fetchall()
+        bcv_list = [b[0] for b in rst_bcvs]
+
         bcv_dict = {v:k for k,v in lid_dict.items() if v >previous and v < next}
-        low = bcv_dict[list(sorted(bcv_dict.keys()))[0]]
-        high = bcv_dict[list(sorted(bcv_dict.keys()))[-1]]
-        for k,v in ppr_dict.items():
-            if k >= low and k <= high:
-                align_list = []
-                temp_dict = {}
-                reverse_temp_dict = {}
-                for item in v:
-                    s, t = item.split('-')
-                    if s in temp_dict:
-                        temp_dict[s] = temp_dict[s] + [t]
-                    else:
-                        temp_dict[s] = [t]
 
-                for r0, r1 in temp_dict.items():
-                    key = str(r0)
-                    value = ' '.join(str(x) for x in r1)
-                    if value in reverse_temp_dict:
-                        reverse_temp_dict[value] = reverse_temp_dict[value] + ' ' + key
-                    else:
-                        reverse_temp_dict[value] = key
-                
+        for bcvs in bcv_list:
+            k = bcv_dict[bcvs]
+            if k in master_ppr_dict:
+                manual_flag = True
+                v = master_ppr_dict[k]
+            else:
+                manual_flag = False
+                v = auto_ppr_dict[k]
+            align_list = []
+            temp_dict = {}
+            reverse_temp_dict = {}
+            for item in v:
+                s, t = item.split('-')
+                if s in temp_dict:
+                    temp_dict[s] = temp_dict[s] + [t]
+                else:
+                    temp_dict[s] = [t]
+            for r0, r1 in temp_dict.items():
+                key = str(r0)
+                value = ' '.join(str(x) for x in r1)
+                if value in reverse_temp_dict:
+                    reverse_temp_dict[value] = reverse_temp_dict[value] + ' ' + key
+                else:
+                    reverse_temp_dict[value] = key
 
-                for ky, val in reverse_temp_dict.items():
-                    va1ue1 = []
-                    for i in ky.split(' '):
-                        if i == '255':
-                            va1ue1.append(None)
-                        else:
-                            va1ue1.append(int(i) - 1)
-                    value2 = []
-                    for j in val.split(' '):
-                        if j == '255':
-                            value2.append(None)
-                        else:
-                            value2.append(int(j) - 1)
-                    align_list.append([value2, va1ue1])
+            for ky, val in reverse_temp_dict.items():
+                va1ue1 = []
+                for i in ky.split(' '):
+                    if i == '255':
+                        pass
+                    else:
+                        va1ue1.append(int(i) - 1)
+                value2 = []
+                for j in val.split(' '):
+                    if j == '255':
+                        pass
+                    else:
+                        value2.append(int(j) - 1)
+                align_list.append([value2, va1ue1, manual_flag])
                 
-                alignment_dict[k] = align_list
+            alignment_dict[k] = align_list
 
         j_list1 = [[self.src, 'UGNT', '0.1'], [self.trg, 'UGNT', '0.1']]
 
@@ -205,10 +223,13 @@ class JsonExporter:
                 src_text = grk_dict[item]
             else:
                 src_text = src_text_dict[item]
-            trg_text = trg_text_dict[item]
+            if trg_text_dt[bcv].strip() != '':
+                trg_text = trg_text_dt[bcv]
+            else:
+                trg_text = trg_text_dict[bcv]
             alignments = alignment_dict[item]
             source_list = [0 for i in range(len(alignments))]
-            verified_list = [False for i in range(len(alignments))]
+            verified_list = [v[2] for v in alignments]
             j_list2.append([[bcv, src_text, trg_text], [source_list, alignments, verified_list]])
 
         j_list = [j_list1] + [j_list2]
