@@ -3,7 +3,7 @@ import json
 
 class JsonExporter:
 
-    def __init__(self, db, src, trg, bookcode, tablename):
+    def __init__(self, db, src, trg, bookcode, tablename, usfmFlag):
         self.db = db.cursor()
         self.src = src
         self.trg = trg
@@ -14,6 +14,15 @@ class JsonExporter:
         self.trg_text_table = 'bib_' + self.trg + '_irv'
         self.grk_table = 'lid_grk_text'
         self.bc = bookcode
+        self.usfmFlag = usfmFlag
+        if self.usfmFlag:
+            self.usfm_table = 'usfm_bib_' + self.trg + '_irv'
+            self.db.execute("SELECT bcv, verse FROM " + self.usfm_table)
+            usfm_rst = self.db.fetchall()
+            self.trg_usfm_dict = {}
+            for u in usfm_rst:
+                self.trg_usfm_dict[u[0]] = u[1]
+
 
     def alignmentarrayelements(self, a_list):
         '''Alignment Array for a verse'''
@@ -34,19 +43,28 @@ class JsonExporter:
         metadata = {
             "contextId": r_list[0]
         }
-        value = {
-            "text": r_list[1],
-            "tokens": r_list[1].split(' '),
-            "metadata": metadata
-        }
+        if r_list[2] == []:
+            value = {
+                "text": r_list[1],
+                "tokens": r_list[1].split(' '),
+                "metadata": metadata
+            }
+        else:
+            value = {
+                "text": r_list[1],
+                "tokens": r_list[1].split(' '),
+                "metadata": metadata,
+                "usfm": r_list[2]
+            }
+
         return value
 
 
     def segmentResourceArray(self, r_list):
         '''Resource Array for a verse'''
         resources = {
-            "r0": self.segmentResourceValue([r_list[0], r_list[1]]),
-            "r1": self.segmentResourceValue([r_list[0], r_list[2]])
+            "r0": self.segmentResourceValue([r_list[0], r_list[1], []]),
+            "r1": self.segmentResourceValue([r_list[0], r_list[2], r_list[3]])
         }
         return resources
 
@@ -230,7 +248,11 @@ class JsonExporter:
             alignments = alignment_dict[item]
             source_list = [0 for i in range(len(alignments))]
             verified_list = [v[2] for v in alignments]
-            j_list2.append([[bcv, src_text, trg_text], [source_list, alignments, verified_list]])
+            if self.usfmFlag:
+                usfm_text = self.trg_usfm_dict[bcv]
+                j_list2.append([[bcv, src_text, trg_text, usfm_text], [source_list, alignments, verified_list]])
+            else:
+                j_list2.append([[bcv, src_text, trg_text, []], [source_list, alignments, verified_list]])
 
         j_list = [j_list1] + [j_list2]
 

@@ -1721,15 +1721,15 @@ def updatealignmentverses():
     return jsonify({'positionalpairs':final_positional_pairs, 'targettext':target_text,\
      'sourcetext':source_text, 'englishword':englishword, 'colorcode':final_color_code})
 
-
-@app.route("/v2/alignments/export/<lang>/<book>", methods=["GET"])
-def jsonexporter(lang, book):
+@app.route("/v2/alignments/export/<lang>/<book>", methods=["GET"], defaults={'usfm':None})
+@app.route("/v2/alignments/export/<lang>/<book>/<usfm>", methods=["GET"])
+def jsonexporter(lang, book, usfm):
     connection  = connect_db()
     src = lang[0:3]
     trg = lang[3:6]
     tablename = getTableName(src, trg)
     bc = getBibleBookIds()[0][book]
-    je = JsonExporter(connection, src, trg, bc, tablename)
+    je = JsonExporter(connection, src, trg, bc, tablename, usfm)
     var = je.exportAlignments()
     return var
 
