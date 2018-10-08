@@ -91,10 +91,33 @@ class FeedbackAligner:
 		print(type(lid))
 		cur.execute("SELECT Word, Position FROM "+self.src_table_name+" WHERE LID = %s ORDER BY Position ",(lid))
 		src_word_list = cur.fetchall()
+
+
 		
 		cur.execute("SELECT Strongs, Position, Word FROM "+self.trg_table_name+" WHERE LID = %s ORDER BY Position ",(lid))
 		trg_word_list = cur.fetchall()
 		
+		cur.execute("SELECT EnglishNASB, Position FROM Grk_Eng_Aligned_Lexicon WHERE LID = %s ORDER BY Position",(lid))
+		eng_word_list = cur.fetchall()
+
+		count_trg = 0
+		count_eng = 0
+		trg_word_list_appended = []
+		while count_trg<len(trg_word_list) and count_eng<len(eng_word_list):
+			if(trg_word_list[count_trg][1] == eng_word_list[count_eng][1]):
+				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],eng_word_list[count_eng][0]))
+				count_trg += 1
+				count_eng += 1
+			elif (trg_word_list[count_trg][1] < eng_word_list[count_eng][1]):
+				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],""))
+				count_trg += 1
+			else:
+				count_eng +=1	
+		if(count_trg<len(trg_word_list)):
+			while (count_trg<len(trg_word_list)):
+				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],""))
+				count_trg += 1
+		trg_word_list = trg_word_list_appended
 
 		cur.execute("SELECT LidSrc, LidTrg, PositionSrc, PositionTrg, WordSrc, Strongs, UserID, Type, Stage from "+self.alignment_table_name+" WHERE LidSrc=%s",(lid))
 		fetched_alignments = cur.fetchall()
@@ -206,15 +229,15 @@ if __name__ == '__main__':
 
 	# src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment('28830','grk_hin_sw_stm_ne_giza_tw__alignment')
 	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment(28830)
-	print("src_word_list:"+str(src_word_list))
-	print("\n")
+	# print("src_word_list:"+str(src_word_list))
+	# print("\n")
 	print("trg_word_list:"+str(trg_word_list))
 	print("\n")
-	print("auto_alignments:"+str(auto_alignments))
-	print("\n")
-	print("corrected_alignments:"+str(corrected_alignments))
-	print("\n")
-	print("replacement_options:"+str(replacement_options))
+	# print("auto_alignments:"+str(auto_alignments))
+	# print("\n")
+	# print("corrected_alignments:"+str(corrected_alignments))
+	# print("\n")
+	# print("replacement_options:"+str(replacement_options))
 
 
 
