@@ -55,13 +55,13 @@ class FeedbackAligner:
 		return
 
 
-	def save_alignment_full_verse(self,lid,word_pairs,userId,type,Stage):
+	def save_alignment_full_verse(self,lid,word_pairs,userId,Type,Stage):
 		cur = self.db.cursor()
 		
 		cur.execute("DELETE FROM "+self.alignment_table_name+" WHERE LidSrc = %s", lid)
 		for pair in word_pairs:
 		
-			cur.execute("INSERT INTO "+self.alignment_table_name+" (LidSrc, LidTrg, PositionSrc, PositionTrg, Strongs, WordSrc, UserId,Type, Stage) VALUES (%s, %s, %s, %s, %s, %s, 0, 1)",
+			cur.execute("INSERT INTO "+self.alignment_table_name+" (LidSrc, LidTrg, PositionSrc, PositionTrg, WordSrc,Strongs, UserId,Type, Stage) VALUES (%s, %s, %s, %s, %s, %s, %s, %s,%s)",
 				(pair[0][0], pair[1][0], pair[0][1], pair[1][1],pair[0][2], pair[1][2],userId,Type,Stage))
 
 		self.db.commit()
