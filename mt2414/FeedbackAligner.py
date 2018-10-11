@@ -126,8 +126,8 @@ class FeedbackAligner:
 		# # and if entry present in trg_verse, add them to replacement_options
 		# replacement_options=self.get_suggested_feedback_alignment_on_verse(lid)
 
-		auto_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[6]==0]
-		corrected_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[6]!=0]
+		auto_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[8]==0]
+		corrected_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[8]!=0]
 		replacement_options = []
 		
 		return list(src_word_list), list(trg_word_list), auto_alignments, corrected_alignments, replacement_options
