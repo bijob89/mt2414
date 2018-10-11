@@ -97,7 +97,7 @@ class FeedbackAligner:
 		cur.execute("SELECT Strongs, Position, Word FROM "+self.trg_table_name+" WHERE LID = %s ORDER BY Position ",(lid))
 		trg_word_list = cur.fetchall()
 		
-		cur.execute("SELECT EnglishNASB, Position FROM Grk_Eng_Aligned_Lexicon WHERE LID = %s ORDER BY Position",(lid))
+		cur.execute("SELECT EnglishULB_NASB_Lex_Combined, Position FROM Grk_Eng_Aligned_Lexicon WHERE LID = %s ORDER BY Position",(lid))
 		eng_word_list = cur.fetchall()
 
 		count_trg = 0
@@ -228,16 +228,16 @@ if __name__ == '__main__':
 	#obj.on_approve_feedback([("2424 5547","यीशु मसीह"),("5207","सन्तान"),("5257 5547","मसीह . सेवक")])
 
 	# src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment('28830','grk_hin_sw_stm_ne_giza_tw__alignment')
-	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment(28830)
-	# print("src_word_list:"+str(src_word_list))
-	# print("\n")
+	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment(29921)
+	print("src_word_list:"+str(src_word_list))
+	print("\n")
 	print("trg_word_list:"+str(trg_word_list))
 	print("\n")
-	# print("auto_alignments:"+str(auto_alignments))
-	# print("\n")
-	# print("corrected_alignments:"+str(corrected_alignments))
-	# print("\n")
-	# print("replacement_options:"+str(replacement_options))
+	print("auto_alignments:"+str(auto_alignments))
+	print("\n")
+	print("corrected_alignments:"+str(corrected_alignments))
+	print("\n")
+	print("replacement_options:"+str(replacement_options))
 
 
 
