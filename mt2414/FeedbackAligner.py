@@ -127,7 +127,7 @@ class FeedbackAligner:
 		# replacement_options=self.get_suggested_feedback_alignment_on_verse(lid)
 
 		auto_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[6]==0]
-		corrected_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[6]==11111]
+		corrected_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[6]!=0]
 		replacement_options = []
 		
 		return list(src_word_list), list(trg_word_list), auto_alignments, corrected_alignments, replacement_options
@@ -227,8 +227,7 @@ if __name__ == '__main__':
 	
 	#obj.on_approve_feedback([("2424 5547","यीशु मसीह"),("5207","सन्तान"),("5257 5547","मसीह . सेवक")])
 
-	# src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment('28830','grk_hin_sw_stm_ne_giza_tw__alignment')
-	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment(29921)
+	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment(23146)
 	print("src_word_list:"+str(src_word_list))
 	print("\n")
 	print("trg_word_list:"+str(trg_word_list))
@@ -244,7 +243,7 @@ if __name__ == '__main__':
 
 	# obj.update_alignment_on_verse('23146')
 	
-	# obj.save_alignment(123,[("xxx","YYY")],'testcase')
+	# obj.save_alignment_full_verse(23146,[((23146,1,"आम"),(23146,3,300)),((23146,2,"आतमि"),(23146,1,100)),((23146,3,'हात'),(23146,2,200))],9999,99,99)
 
 	# TW_alignments = obj.fetch_all_TW_alignments()
 	# TW_alignments = obj.fetch_seleted_TW_alignments([1,2,3])
