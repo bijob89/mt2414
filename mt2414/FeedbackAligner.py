@@ -97,25 +97,33 @@ class FeedbackAligner:
 		cur.execute("SELECT Strongs, Position, Word FROM "+self.trg_table_name+" WHERE LID = %s ORDER BY Position ",(lid))
 		trg_word_list = cur.fetchall()
 		
-		cur.execute("SELECT EnglishULB_NASB_Lex_Combined, Position FROM Grk_Eng_Aligned_Lexicon WHERE LID = %s ORDER BY Position",(lid))
+		cur.execute("SELECT Position, EnglishULB_NASB_Lex_Combined, GreekWord, Transliteration, Pronounciation, Definition FROM Grk_Eng_Aligned_Lexicon WHERE LID = %s ORDER BY Position",(lid))
 		eng_word_list = cur.fetchall()
 
 		count_trg = 0
 		count_eng = 0
 		trg_word_list_appended = []
 		while count_trg<len(trg_word_list) and count_eng<len(eng_word_list):
-			if(trg_word_list[count_trg][1] == eng_word_list[count_eng][1]):
-				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],eng_word_list[count_eng][0]))
+			if(trg_word_list[count_trg][1] == eng_word_list[count_eng][0]):
+				lexical_info = {}
+				lexical_info["EnglishULB_NASB_Lex_Combined"] = eng_word_list[count_eng][1]
+				lexical_info["GreekWord"] = eng_word_list[count_eng][2]
+				lexical_info["Transliteration"] = eng_word_list[count_eng][3]
+				lexical_info["Pronounciation"] = eng_word_list[count_eng][4]
+				lexical_info["Definition"] = eng_word_list[count_eng][5]
+				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],lexical_info))
 				count_trg += 1
 				count_eng += 1
-			elif (trg_word_list[count_trg][1] < eng_word_list[count_eng][1]):
-				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],""))
+			elif (trg_word_list[count_trg][1] < eng_word_list[count_eng][0]):
+				lexical_info = {}
+				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],lexical_info))
 				count_trg += 1
 			else:
 				count_eng +=1	
 		if(count_trg<len(trg_word_list)):
 			while (count_trg<len(trg_word_list)):
-				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],""))
+				lexical_info = {}
+				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],lexical_info))
 				count_trg += 1
 		trg_word_list = trg_word_list_appended
 
