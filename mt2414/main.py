@@ -71,9 +71,9 @@ def get_db():                                                                   
     """Opens a new database connection if there is none yet for the
     current application context.
     """
-    if not hasattr(g, 'db'):
-        g.db = psycopg2.connect(dbname=postgres_database, user=postgres_user, password=postgres_password, host=postgres_host, port=postgres_port)
-    return g.db
+    if not hasattr(g, 'db1'):
+        g.db1 = psycopg2.connect(dbname=postgres_database, user=postgres_user, password=postgres_password, host=postgres_host, port=postgres_port)
+    return g.db1
 
 def getBibleBookIds():
     '''
@@ -97,6 +97,8 @@ def close_db(error):
     """Closes the database again at the end of the request."""
     if hasattr(g, 'db'):
         g.db.close()
+    if hasattr(g, 'db1'):
+        g.db1.close()
 
 @app.route("/v1/auth", methods=["POST"])                    #-------------------For login---------------------#
 def auth():
@@ -1257,57 +1259,77 @@ def suggestions():
 def getLid(bcv):
     connection = connect_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT lid FROM bcv_lid_map_7914 WHERE bcv = %s", (bcv,))
+    length = len(bcv)
+    book = int(bcv[-length:-6])
+    chapter = int(bcv[-6:-3])
+    verse = int(bcv[-3:])
+    cursor.execute("SELECT ID FROM Bcv_LidMap WHERE Book = %s AND Chapter \
+    = %s AND Verse = %s", (book, chapter, verse))
     lid_rst = cursor.fetchone()
     if lid_rst:
-        lid = lid_rst[0]
+        lid = int(lid_rst[0])
     else:
         return 'Invalid BCV'
     cursor.close()
     return lid
 
-def parseAlignmentData(alignmentData):
+def db_text_to_list(value):
+    text_list = ['' for i in range(len(value))]
+    for item in value:
+        index = item[0]
+        text_list[int(index) - 1] = item[1]
+    return text_list
+
+def parseAlignmentData(lid, src, trg, alignmentData):
+
     connection = connect_db()
     cursor = connection.cursor()
-    source_text = ['' for i in range(len(alignmentData[0]))]
-    englishword = ['' for i in range(len(alignmentData[0]))]
-    for s_item in alignmentData[0]:
-        index = s_item[1].split('_')[1]
-        s_text = 'G' + s_item[0].zfill(4) + '0'
-        source_text[int(index) - 1] = s_text
-        english = ''.join(s_item[2])
-        if '-' in english:
-            cursor.execute("SELECT englishword from lxn_gre_eng WHERE strongsnumber = %s", ('g' + s_item[0]))
-            rst = cursor.fetchone()
-            eng_word = '* ' + ', '.join([' '.join(x.strip().split(' ')[0:-1]) \
-                                                                for x in rst[0].split(',')[0:4]])
-        else:
-            eng_word = ''.join(s_item[2])
-        englishword[int(index) - 1] = eng_word
 
-    target_text = ['' for i in range(len(alignmentData[1]))]
+    src_bible_words_table = src.capitalize() + '_4_BibleWord'
+    trg_bible_words_table = trg.capitalize() + '_UGNT_BibleWord'
+    cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
+    source_text = db_text_to_list(cursor.fetchall())
+    cursor.execute("SELECT Position, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (lid,))
+    target_text = db_text_to_list(cursor.fetchall())
+    englishword = []
+    lexicandata = {}
+
     for t_item in alignmentData[1]:
-        index = t_item[1].split('_')[1]
-        t_text = t_item[0]
-        target_text[int(index) - 1] = t_text
+        strongs = t_item[0]
+        lex_dict = t_item[3]
+        if lex_dict['EnglishULB_NASB_Lex_Combined'].strip() == "":
+            englishWord = "-"
+        else:
+            englishWord = lex_dict['EnglishULB_NASB_Lex_Combined'].strip()
+        englishword.append(englishWord)
+        pattern = {
+                    "strongs": strongs,
+                    "pronunciation": lex_dict['Pronounciation'],
+                    "sourceword": lex_dict['GreekWord'],
+                    "transliteration": lex_dict['Transliteration'],
+                    "definition": lex_dict['Definition'],
+                    "targetword": englishWord
+                    }
+        if t_item[0] not in lexicandata:
+            lexicandata[t_item[0]] = pattern
 
     auto_alignments = []
-    for a_item in set(list(alignmentData[2])):
-        src = a_item[1].split('_')[1]
-        trg = a_item[2].split('_')[1]
-        auto_alignments.append(trg + '-' + src)
+    for a_item in alignmentData[2]:
+        trg = a_item[1][1]
+        src = a_item[0][1]
+        auto_alignments.append(str(src) + '-' + str(trg))
 
     corrected_alignments = []
-    for c_item in set(list(alignmentData[3])):
-        src = c_item[1].split('_')[1]
-        trg = c_item[2].split('_')[1]
-        corrected_alignments.append(trg + '-' + src)
+    for c_item in alignmentData[3]:
+        trg = c_item[1][1]
+        src = c_item[0][1]
+        corrected_alignments.append(str(src) + '-' + str(trg))
 
     replacement_options = []
-    for r_item in set(list(alignmentData[4])):
-        src = r_item[0].split('_')[1]
-        trg = r_item[1].split('_')[1]
-        replacement_options.append(trg + '-' + src)
+    for r_item in alignmentData[4]:
+        trg = r_item[1][1]
+        src = r_item[0][1]
+        replacement_options.append(str(src) + '-' + str(trg))
     position_pairs = corrected_alignments + \
                             [x for x in auto_alignments if x not in corrected_alignments]
     colorcode = [1 for i in range(len(corrected_alignments))] + \
@@ -1316,7 +1338,7 @@ def parseAlignmentData(alignmentData):
     final_position_pairs = position_pairs + [y for y in replacement_options if y not in position_pairs]
     colorcode = colorcode + [2 for i in range(len(final_position_pairs) - len(position_pairs))]
     cursor.close()
-    return (source_text, target_text, final_position_pairs, colorcode, replacement_options, englishword)
+    return (source_text, target_text, final_position_pairs, colorcode, replacement_options, englishword, lexicandata)
 
 def getEnglishWords(strongsArray):
     '''
@@ -1349,17 +1371,17 @@ def getEnglishWords(strongsArray):
     return englishword
 
 def getTableName(src, trg):
-    if trg == 'hin':
-        tablename = 'grk_hin_sw_stm_ne_giza_tw__alignment'
-    elif trg == 'mal':
-        tablename = '%s_%s_sw_stm_ne_giza___alignment' %(src, trg)
-    elif trg == 'urd' or trg == 'tam' or trg == 'odi' or trg == 'asm' or trg == 'tam'\
-    or trg == 'urd' or trg == 'kan':
-        tablename = '%s_%s____giza___alignment' %(src, trg)
-    elif trg == 'tel':
-        tablename = '%s_%s_sw___giza___alignment' %(src, trg)
+    if src == 'hin':
+        tablename = 'Hin_4_Grk_UGNT_Alignment'
+    elif src == 'mal':
+        tablename = '%s_%s_sw_stm_ne_giza___alignment' %(trg, src)
+    elif src == 'urd' or trg == 'tam' or trg == 'odi' or trg == 'asm' or trg == 'tam'\
+    or src == 'urd' or src == 'kan':
+        tablename = '%s_%s____giza___alignment' %(trg, src)
+    elif src == 'tel':
+        tablename = '%s_%s_sw___giza___alignment' %(trg, src)
     else:
-        tablename = '%s_%s_sw_stm__giza___alignment' %(src, trg)
+        tablename = '%s_%s_sw_stm__giza___alignment' %(trg, src)
     return tablename
 
 @app.route('/v2/alignments/<bcv>/<lang>', methods=["GET"])
@@ -1368,38 +1390,17 @@ def getalignments(bcv, lang):
     Returns list of positional pairs, list of Hindi words, list of strong numbers for the bcv queried. 
     '''
     connection = connect_db()
-    src = lang[0:3]
-    trg = lang[3:6]
-    tablename = getTableName(src, trg)
+    trg = lang[0:3]
+    src = lang[3:6]
     lid = getLid(bcv)
-    fb = FeedbackAligner(connection, src, trg, tablename)
-    result = fb.fetch_alignment(str(lid), tablename)
-    source_text, target_text, position_pairs, colorcode, replacement_options, englishword = parseAlignmentData(result)
+    fb = FeedbackAligner(connection, src.capitalize(), '4', trg.capitalize(), 'UGNT')
+    result = fb.fetch_alignment(lid)
+    source_text, target_text, position_pairs, colorcode, replacement_options, \
+                                            englishword, lexicandata = parseAlignmentData(lid, src, trg, result)
     cursor = connection.cursor()
-    cursor.execute("SELECT word, occurences FROM grk_bible_concordance \
-     WHERE occurences LIKE '" + str(lid) + "\_%'")
-    s_result = cursor.fetchall()
-    src_list = db_text_to_list(s_result)
-    lexicandata = {}
-    for word in src_list:
-        cursor.execute("SELECT * FROM lxn_gre_eng WHERE id = %s", (word,))
-        rst = cursor.fetchone()
-        if rst:
-            strongs = rst[0]
-            pronunciation = rst[1]
-            greek_word = rst[2]
-            transliteration = rst[3]
-            definition = rst[4]
-            english = rst[6]
-            pattern = {"strongs":strongs, "pronunciation":pronunciation, "sourceword":greek_word, \
-                "transliteration":transliteration, "definition":definition, "targetword":english}
-            
-            word = 'G' + word.zfill(4) + '0'
-            if word not in lexicandata:
-                lexicandata[word] = pattern
     cursor.close()
-    return jsonify({'positionalpairs':position_pairs, 'targettext':target_text,\
-     'sourcetext':source_text, 'englishword':englishword, 'colorcode':colorcode, 'lexicondata': lexicandata})
+    return jsonify({'positionalpairs':position_pairs, 'targettext':source_text,\
+     'sourcetext':target_text, 'englishword':englishword, 'colorcode':colorcode, 'lexicondata': lexicandata})
 
 def lid_to_bcv(num_list):
     '''
@@ -1407,17 +1408,18 @@ def lid_to_bcv(num_list):
     '''
     connection = connect_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT lid, bcv FROM bcv_lid_map_7914")
+    cursor.execute("SELECT ID, Book, Chapter, Verse FROM Bcv_LidMap")
     rst = cursor.fetchall()
     lid_dict = {}
     bcv_list = []
-    for k,v in rst:
-        lid_dict[k] = v
+    for l,b,c,v in rst:
+        lid_dict[l] = str(b) + str(c).zfill(3) + str(v).zfill(3)
     for n in num_list:
         bcv = lid_dict[n]
         bcv_list.append(bcv)
     cursor.close()
     return bcv_list
+
 
 @app.route('/v2/alignments/books/<lang>', methods=["GET"])
 def getbooks(lang):
@@ -1426,15 +1428,16 @@ def getbooks(lang):
     '''
     connection = connect_db()
     cursor = connection.cursor()
-    src = lang[0:3]
-    trg = lang[3:6]
+    lang = lang.lower()
+    trg = lang[0:3]
+    src = lang[3:6]
     tablename = getTableName(src, trg)
-    cursor.execute("SELECT lid, bcv FROM bcv_lid_map_7914")
+    cursor.execute("SELECT ID, Book, Chapter, Verse FROM Bcv_LidMap")
     rst_num = cursor.fetchall()
     lid_dict = {}
-    for k,v in rst_num:
-        lid_dict[k] = v
-    cursor.execute("SELECT DISTINCT(lid) FROM " + tablename + "")
+    for l,b,c,v in rst_num:
+        lid_dict[l] = str(b) + str(c).zfill(3) + str(v).zfill(3)
+    cursor.execute("SELECT DISTINCT(LidSrc) FROM " + tablename + "")
     rst = cursor.fetchall()
     if rst != []:
         lid_list  = []
@@ -1470,17 +1473,12 @@ def getchapternumbers(bookname):
     else:
         bc = bookcode[bookname]
     
-    prev = int(bc) * 1000000
-    nxt = (int(bc) + 1) * 1000000
-    cursor.execute("SELECT bcv FROM bcv_lid_map_7914 WHERE bcv > %s and bcv < %s", (prev, nxt))
+    cursor.execute("SELECT DISTINCT(Chapter) FROM Bcv_LidMap WHERE Book = %s", (int(bc),))
     rst = cursor.fetchall()
     temp_list = []
     if rst != []:
-        for bcv in rst:
-            temp_str = str(bcv[0])
-            chapter_num = temp_str[-6:-3]
-            if int(chapter_num) not in temp_list:
-                temp_list.append(int(chapter_num))
+        for c in rst:
+            temp_list.append(c[0])
     cursor.close()
     return jsonify({"chapter_numbers": sorted(temp_list)})
 
@@ -1497,26 +1495,15 @@ def getversenumbers(bookname, chapternumber):
         return 'Invalid book name'
     else:
         bookcode = bc[bookname]
-    prev = int(str(bookcode) + str(int(chapternumber)).zfill(3) + '000')
-    nxt = int(str(bookcode) + str(int(chapternumber) + 1).zfill(3) + '000')
-    cursor.execute("SELECT bcv FROM bcv_lid_map_7914 WHERE bcv > %s and bcv < %s", (prev, nxt))
+    cursor.execute("SELECT Verse FROM Bcv_LidMap WHERE Book = %s and Chapter = %s", (int(bookcode), int(chapternumber)))
     rst = cursor.fetchall()
     temp_list = []
     if rst != []:
-        for bcv in rst:
-            temp_str = str(bcv[0])
-            verse_num = temp_str[5:]
-            if int(verse_num) not in temp_list:
-                temp_list.append(int(verse_num))
+        for v in rst:
+            temp_list.append(v[0])
     cursor.close()
     return jsonify({"verse_numbers": sorted(temp_list)})
 
-def db_text_to_list(value):
-    text_list = ['' for i in range(len(value))]
-    for item in value:
-        index = item[1].split('_')[1]
-        text_list[int(index) - 1] = item[0]
-    return text_list
 
 @app.route('/v2/alignments', methods=["POST"])
 @check_token
@@ -1529,48 +1516,42 @@ def editalignments():
     bcv = req["bcv"]
     lang = req["lang"]
     position_pairs = req["positional_pairs"]
+    lid = getLid(bcv)
     connection = connect_db()
     cursor = connection.cursor()
     lid = getLid(bcv)
-    src = lang[0:3]
-    trg = lang[3:6]
-    tablename = "%s_%s_alignment" %(src, trg)
-    ppr_final_list = []
+    trg = lang[0:3]
+    src = lang[3:6]
+    conn = get_db()
+    src_bible_words_table = src.capitalize() + '_4_BibleWord'
+    trg_bible_words_table = trg.capitalize() + '_UGNT_BibleWord'
+    cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
+    src_text_list = db_text_to_list(cursor.fetchall())
+    cursor.execute("SELECT Position, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (lid,))
+    trg_text_list = db_text_to_list(cursor.fetchall())
+    cur = conn.cursor()
     user = request.email
-    trg_table_name = trg + '_bible_concordance'
-    src_table_name = src + '_bible_concordance'
-
-    cursor.execute("SELECT word, occurences FROM "+ trg_table_name + \
-    " WHERE occurences LIKE '" + str(lid) + "\_%'")
-    t_result = cursor.fetchall()
-    trg_list = db_text_to_list(t_result)
-
-    cursor.execute("SELECT word, occurences FROM "+ src_table_name + \
-    " WHERE occurences LIKE '" + str(lid) + "\_%'")
-    s_result = cursor.fetchall()
-    src_list = db_text_to_list(s_result)
-    cursor.execute("DELETE FROM " + tablename + " WHERE lid = %s", (lid,))
+    cur.execute("SELECT id FROM users WHERE email = %s", (user,))
+    user_id = cur.fetchone()[0]
     stage = list(set(position_pairs))
-
+    final_position_pairs = []
     for item in stage:
         split_item = item.split('-')
-        s_wordid = split_item[1]
-        t_wordid = split_item[0]
-        if s_wordid == '255':
-            source_wordid = str(lid) + '_' + s_wordid
+        src_pos = split_item[0]
+        trg_pos = split_item[1]
+        if src_pos == '255':
+            src_word = None
         else:
-            if int(s_wordid) <= len(src_list):
-                source_wordid = str(lid) + '_' + s_wordid
-        if t_wordid == '255':
-            target_wordid = str(lid) + '_' + t_wordid
+            src_word = src_text_list[int(src_pos) - 1]
+        if trg_pos == '255':
+            trg_word = None
         else:
-            if int(t_wordid) <= len(trg_list):
-                target_wordid = str(lid) + '_' + t_wordid
-        ppr_final_list.append((source_wordid, target_wordid))
-    fb = FeedbackAligner(connection, src, trg, tablename)
-    fb.save_alignment(lid, ppr_final_list, user)
+            trg_word = trg_text_list[int(trg_pos) - 1]
+        final_position_pairs.append(((lid, src_pos, src_word),(lid, trg_pos, trg_word)))
+    fb = FeedbackAligner(connection, src.capitalize(), '4', trg.capitalize(), 'UGNT')
+    fb.save_alignment_full_verse(lid, final_position_pairs, user_id, None, 1)
     connection.commit()
-    cursor.close()
+    cur.close()
     return 'Saved'
 
 @app.route("/v2/lexicons/<strong>", methods=["GET"])
@@ -1614,7 +1595,7 @@ def approvefeedbacks():
     src = lang[0:3]
     trg = lang[3:6]
     tablename = getTableName(src, trg)
-    fb = FeedbackAligner(connection, src, trg, tablename)
+    fb = FeedbackAligner(connection, src.capitalize(), '4', trg.capitalize(), 'UGNT')
     cursor = connection.cursor()
     lid = getLid(bcv)
 
@@ -1674,10 +1655,10 @@ def updatealignmentverses():
     trg = lang[3:6]
     tablename = getTableName(src, trg)
     lid = getLid(bcv)
-    fb = FeedbackAligner(connection, src, trg, tablename)
+    fb = FeedbackAligner(connection, src.capitalize(), '4', trg.capitalize(), 'UGNT')
     result = fb.fetch_alignment(str(lid), tablename)
 
-    source_text, target_text, position_pairs, colorcode, replacement_options, englishword = parseAlignmentData(result)
+    source_text, target_text, position_pairs, colorcode, replacement_options, englishword, lexicandata = parseAlignmentData(lid, src, trg, result)
 
     position_pair_dict = {}
 
@@ -1721,15 +1702,15 @@ def updatealignmentverses():
     return jsonify({'positionalpairs':final_positional_pairs, 'targettext':target_text,\
      'sourcetext':source_text, 'englishword':englishword, 'colorcode':final_color_code})
 
-@app.route("/v2/alignments/export/<lang>/<book>", methods=["GET"], defaults={'usfm':None})
-@app.route("/v2/alignments/export/<lang>/<book>/<usfm>", methods=["GET"])
-def jsonexporter(lang, book, usfm):
+@app.route("/v2/alignments/export/<lang>/<book>", methods=["GET"], defaults={'usfm_status':None})
+@app.route("/v2/alignments/export/<lang>/<book>/<usfm_status>", methods=["GET"])
+def jsonexporter(lang, book, usfm_status):
     connection  = connect_db()
-    src = lang[0:3]
-    trg = lang[3:6]
+    trg = lang[0:3]
+    src = lang[3:6]
     tablename = getTableName(src, trg)
     bc = getBibleBookIds()[0][book]
-    je = JsonExporter(connection, src, trg, bc, tablename, usfm)
+    je = JsonExporter(connection, src, trg, bc, book, tablename, usfm_status)
     var = je.exportAlignments()
     return var
 
@@ -1761,7 +1742,7 @@ def searchreference():
 def getlanguages():
     connection = connect_db()
     cursor = connection.cursor()
-    cursor.execute("SHOW TABLES LIKE '%_alignment%'")
+    cursor.execute("SHOW TABLES LIKE '%_Alignment%'")
     rst = cursor.fetchall()
     languagelist = {
         'grk': 'Greek',
@@ -1781,10 +1762,10 @@ def getlanguages():
     languagedict = {}
     for item in list(set(rst)):
         split_item = item[0].split('_')
-        src = split_item[0]
-        trg = split_item[1]
+        src = split_item[2]
+        trg = split_item[0]
         lang = src + trg
-        alignments = languagelist[trg]
+        alignments = languagelist[trg.capitalize()]
         languagedict[lang] = alignments
     return jsonify(languagedict)
 
@@ -1797,7 +1778,7 @@ def getTranslationWords(lang, index):
     first = int(index.split('-')[0])
     last = int(index.split('-')[1]) + 1
     tablename = getTableName(src, trg)
-    fb = FeedbackAligner(connection, src, trg, tablename)
+    fb = FeedbackAligner(connection, src.capitalize(), '4', trg.capitalize(), 'UGNT')
     TW = fb.fetch_seleted_TW_alignments(range(first, last))
     return jsonify(TW)
 
