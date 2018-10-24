@@ -84,7 +84,7 @@ def getBibleBookIds():
     bookname = {}
     connection  = connect_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT * FROM bible_books_id")
+    cursor.execute("SELECT * FROM Bible_Book_Lookup")
     rst = cursor.fetchall()
     for item in rst:
         bookname[item[1]] = str(item[0])
@@ -1561,12 +1561,13 @@ def getlexicons(strong):
     """
     connection = connect_db()
     cursor = connection.cursor()
-    strong = strong[1:-1]
     if not strong.isdigit():
         return 'Invalid Strong Number\n'
     else:
         strong = int(strong)
-    cursor.execute("SELECT * FROM lxn_gre_eng WHERE id = %s", (strong,))
+    cursor.execute("SELECT Strongs, Pronounciation, GreekWord, Transliteration, \
+    Definition, EnglishULB_NASB_Lex_Combined, EnglishULB \
+     FROM Grk_Eng_Aligned_Lexicon WHERE Strongs = %s", (strong,))
     rst = cursor.fetchone()
     if rst:
         strongs = rst[0]
@@ -1574,7 +1575,10 @@ def getlexicons(strong):
         greek_word = rst[2]
         transliteration = rst[3]
         definition = rst[4]
-        englishword = rst[6]
+        if rst[5].strip() != '':
+            englishword = rst[5].strip()
+        else:
+            englishword = rst[6].strip()
     else:
         return 'No information available'
     cursor.close()
@@ -1592,8 +1596,8 @@ def approvefeedbacks():
     lang = req["lang"]
     positional_pairs = req["positional_pairs"]
     connection = connect_db()
-    src = lang[0:3]
-    trg = lang[3:6]
+    trg = lang[0:3]
+    src = lang[3:6]
     tablename = getTableName(src, trg)
     fb = FeedbackAligner(connection, src.capitalize(), '4', trg.capitalize(), 'UGNT')
     cursor = connection.cursor()
@@ -1651,8 +1655,8 @@ def updatealignmentverses():
     bcv = req["bcv"]
     lang = req["lang"]
     connection = connect_db()
-    src = lang[0:3]
-    trg = lang[3:6]
+    trg = lang[0:3]
+    src = lang[3:6]
     tablename = getTableName(src, trg)
     lid = getLid(bcv)
     fb = FeedbackAligner(connection, src.capitalize(), '4', trg.capitalize(), 'UGNT')
@@ -1765,7 +1769,7 @@ def getlanguages():
         src = split_item[2]
         trg = split_item[0]
         lang = src + trg
-        alignments = languagelist[trg.capitalize()]
+        alignments = languagelist[trg.lower()]
         languagedict[lang] = alignments
     return jsonify(languagedict)
 
@@ -1782,3 +1786,51 @@ def getTranslationWords(lang, index):
     TW = fb.fetch_seleted_TW_alignments(range(first, last))
     return jsonify(TW)
 
+@app.route("/v2/alignments/strongs", methods=["GET"])
+def getStrongsList():
+    connection = connect_db()
+    tablename = 'Grk_UGNT_BibleWord'
+    cursor = connection.cursor()
+    cursor.execute("SELECT Distinct(Strongs) From " + tablename)
+    strongsList = []
+    for item in cursor.fetchall():
+        strongsList.append(item[0])
+    cursor.close()
+    return jsonify(sorted(strongsList))
+
+@app.route("/v2/alignments/strongs/<lang>/<strongsnumber>", methods=["GET"], defaults={'status':'all'})
+@app.route("/v2/alignments/strongs/<lang>/<strongsnumber>/<status>", methods=["GET"])
+def getStrongsInfo(lang, strongsnumber, status):
+    connection = connect_db()
+    cursor = connection.cursor()
+    src = lang[3:]
+    trg = lang[0:3]
+    srcVersion = '4'
+    trgVersion = 'UGNT'
+    tablename = src.capitalize() + '_' + srcVersion + '_' + trg.capitalize() + '_' + trgVersion + '_Alignment'
+    cursor.execute("SELECT WordSrc, LidSrc FROM " + tablename + " WHERE Strongs=%s", (strongsnumber))
+    rst = cursor.fetchall()
+    cursor.execute("SELECT ID, Book, Chapter, Verse FROM Bcv_LidMap")
+    lidDict = {}
+    for l,b,c,v in cursor.fetchall():
+        bc = str(b).zfill(2)
+        chap = str(c).zfill(3)
+        ver = str(v).zfill(3)
+        bcv = int(bc + chap + ver)
+        lidDict[l] = bcv
+    temp = {}
+    if rst:
+        for item in rst:
+            bCV = lidDict[item[1]]
+            if item[0] in temp:
+                temp[item[0]] = temp[item[0]] + [bCV]
+            else:
+                temp[item[0]] = [bCV]
+    strongsInfoDict = {}
+    for k,v in temp.items():
+        strongsInfoDict[k] = {
+            "references": v,
+            "count": len(v)
+        }
+    cursor.close()
+    return jsonify(strongsInfoDict)

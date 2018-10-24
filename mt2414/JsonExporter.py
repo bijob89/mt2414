@@ -11,17 +11,10 @@ class JsonExporter:
         self.src_bible_words_table = self.src.capitalize() + '_4_BibleWord'
         self.trg_bible_words_table = self.trg.capitalize() + '_UGNT_BibleWord'
         self.src_text_table = 'Hin_4_Text'
-        self.grk_table = 'Grk_UGNT_Text'
+        self.grk_table = 'Grk_Eng_Aligned_Lexicon'
         self.book = book
         self.bc = int(bookcode)
         self.usfmFlag = usfmFlag
-        if self.usfmFlag:
-            self.usfm_table = self.src + '_IRV_Text_USFM'
-            self.db.execute("SELECT bcv, verse FROM " + self.usfm_table)
-            usfm_rst = self.db.fetchall()
-            self.src_usfm_dict = {}
-            for u in usfm_rst:
-                self.src_usfm_dict[u[0]] = u[1]
 
 
     def alignmentarrayelements(self, a_list):
@@ -179,70 +172,91 @@ class JsonExporter:
             stage_dict[item[0]] = item[5]
 
         # Fetch Target text
-        self.db.execute("SELECT lid, verse FROM " + self.grk_table)
+        self.db.execute("SELECT LID, Position, GreekWord FROM " + self.grk_table)
         grk_rst = self.db.fetchall()
         grk_dict = {}
-        for g in grk_rst:
-            grk_dict[g[0]] = g[1]
+        grkPosDict = {}
+        for l,p,g in grk_rst:
+            if l in grkPosDict:
+                temp = grkPosDict[l]
+                temp[p] = g
+                grkPosDict[l] = temp
+            else:
+                grkPosDict[l] = {
+                    p:g
+                }
+            grk_dict[g] = g
 
+        for key in grkPosDict.keys():
+            tempList = ['' for i in range(max(grkPosDict[key]))]
+            for k,v in grkPosDict[key].items():
+                if v == None:
+                    v = ''
+                tempList[k - 1] = v
+            grk_dict[key] = ' '.join(tempList)
+            
+    
         # Fetch Source text
-        self.db.execute("SELECT LID, Verse from " + self.src_text_table)
+        self.db.execute("SELECT LID, Verse, usfm from " + self.src_text_table)
         rst_src_text = self.db.fetchall()
         src_text_dt = {}
-        for tt in rst_src_text:
-            src_text_dt[tt[0]] = tt[1]
+        src_usfm_dict = {}
+        for item in rst_src_text:
+            src_text_dt[item[0]] = item[1]
+            src_usfm_dict[item[0]] = item[2]
 
         alignment_dict = {}
-
         for k in lid_dict.keys():
             align_list = []
             temp_dict = {}
             reverse_temp_dict = {}
-            v = positional_pairs[k]
-            for item in v:
-                s, t = item.split('-')
-                if s in temp_dict:
-                    temp_dict[s] = temp_dict[s] + [t]
-                else:
-                    temp_dict[s] = [t]
-            for r0, r1 in temp_dict.items():
-                key = str(r0)
-                value = ' '.join(str(x) for x in r1)
-                if value in reverse_temp_dict:
-                    reverse_temp_dict[value] = reverse_temp_dict[value] + ' ' + key
-                else:
-                    reverse_temp_dict[value] = key
-
-            for ky, val in reverse_temp_dict.items():
-                va1ue1 = []
-                for i in ky.split(' '):
-                    if i == '255':
-                        pass
+            if k in positional_pairs:
+                v = positional_pairs[k]
+                for item in v:
+                    s, t = item.split('-')
+                    if s in temp_dict:
+                        temp_dict[s] = temp_dict[s] + [t]
                     else:
-                        va1ue1.append(int(i) - 1)
-                value2 = []
-                for j in val.split(' '):
-                    if j == '255':
-                        pass
+                        temp_dict[s] = [t]
+                for r0, r1 in temp_dict.items():
+                    key = str(r0)
+                    value = ' '.join(str(x) for x in r1)
+                    if value in reverse_temp_dict:
+                        reverse_temp_dict[value] = reverse_temp_dict[value] + ' ' + key
                     else:
-                        value2.append(int(j) - 1)
-                align_list.append([value2, va1ue1])
-                
-            alignment_dict[k] = align_list
+                        reverse_temp_dict[value] = key
 
-        j_list1 = [[self.src, 'UGNT', '0.1'], [self.trg, 'UGNT', '0.1']]
+                for ky, val in reverse_temp_dict.items():
+                    value1 = []
+                    for i in ky.split(' '):
+                        if i == '255':
+                            pass
+                        else:
+                            value1.append(int(i) - 1)
+                    value2 = []
+                    for j in val.split(' '):
+                        if j == '255':
+                            pass
+                        else:
+                            value2.append(int(j) - 1)
+                    align_list.append([value1, value2])
+                alignment_dict[k] = align_list
+            else:
+                pass
+
+        j_list1 = [[self.trg, 'UGNT', '0.1'], [self.src, 'IRV', '0.1']]
 
         j_list2 = []
         for item in sorted(alignment_dict.keys()):
             bcv = lid_dict[item]
             if item in grk_dict:
-                src_text = grk_dict[item]
+                trg_text = grk_dict[item].strip()
             else:
-                src_text = src_text_dict[item]
+                trg_text = trg_text_dict[item].strip()
             if src_text_dt[item].strip() != '':
-                trg_text = src_text_dt[item]
+                src_text = src_text_dt[item].strip()
             else:
-                trg_text = trg_text_dict[item]
+                src_text = src_text_dict[item].strip()
             alignments = alignment_dict[item]
             source_list = [0 for i in range(len(alignments))]
 
@@ -253,10 +267,10 @@ class JsonExporter:
             contextId = str(bcv)[-6:]
             contextId = self.book.upper() + contextId
             if self.usfmFlag:
-                usfm_text = self.src_usfm_dict[int(bcv)]
-                j_list2.append([[contextId, src_text, trg_text, usfm_text], [source_list, alignments, verified_list]])
+                usfm_text = src_usfm_dict[item]
+                j_list2.append([[contextId, trg_text, src_text, usfm_text], [source_list, alignments, verified_list]])
             else:
-                j_list2.append([[contextId, src_text, trg_text, []], [source_list, alignments, verified_list]])
+                j_list2.append([[contextId, trg_text, src_text, []], [source_list, alignments, verified_list]])
 
         j_list = [j_list1] + [j_list2]
 
