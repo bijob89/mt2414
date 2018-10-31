@@ -3,14 +3,16 @@ import json
 
 class JsonExporter:
 
-    def __init__(self, db, src, trg, bookcode, book, tablename, usfmFlag):
+    def __init__(self, db, src, sVer, trg, tVer, bookcode, book, tablename, usfmFlag):
         self.db = db.cursor()
         self.src = src
         self.trg = trg
+        self.sVer = sVer
+        self.tVer = tVer
         self.tablename = tablename
-        self.src_bible_words_table = self.src.capitalize() + '_4_BibleWord'
-        self.trg_bible_words_table = self.trg.capitalize() + '_UGNT_BibleWord'
-        self.src_text_table = 'Hin_4_Text'
+        self.src_bible_words_table = '%s_%s_BibleWord' %(self.src.capitalize(), self.sVer.upper())
+        self.trg_bible_words_table = '%s_%s_BibleWord' %(self.trg.capitalize(), self.tVer.upper())
+        self.src_text_table = '%s_%s_Text' %(self.src.capitalize(), self.sVer.upper())
         self.grk_table = 'Grk_Eng_Aligned_Lexicon'
         self.book = book
         self.bc = int(bookcode)
@@ -244,7 +246,7 @@ class JsonExporter:
             else:
                 pass
 
-        j_list1 = [[self.trg, 'UGNT', '0.1'], [self.src, 'IRV', '0.1']]
+        j_list1 = [[self.trg, self.tVer, '0.1'], [self.src, self.sVer, '0.1']]
 
         j_list2 = []
         for item in sorted(alignment_dict.keys()):
@@ -261,9 +263,9 @@ class JsonExporter:
             source_list = [0 for i in range(len(alignments))]
 
             if stage_dict[item] == 1:
-                verified_list = [True for i in range(len(src_text_dict[item].split(" ")))]
+                verified_list = [True for i in range(len(alignments))]
             else:
-                verified_list = [False for i in range(len(src_text_dict[item].split(" ")))]
+                verified_list = [True for i in range(len(alignments))]
             contextId = str(bcv)[-6:]
             contextId = self.book.upper() + contextId
             if self.usfmFlag:
