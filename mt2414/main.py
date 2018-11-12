@@ -236,7 +236,6 @@ def check_token(f):
         auth_header_value = request.headers.get('Authorization', None)
         if not auth_header_value:
             raise TokenError('No Authorization header', 'Token missing')
-
         parts = auth_header_value.split()
         if (len(parts) == 1) and (parts[0].lower() != 'bearer'):
             access_id, key = parts[0].split(":")
@@ -1384,6 +1383,17 @@ def lid_to_bcv(num_list):
     cursor.close()
     return bcv_list
 
+def getLidDict():
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT ID, Book, Chapter, Verse FROM Bcv_LidMap")
+    rst_num = cursor.fetchall()
+    lid_dict = {}
+    for l,b,c,v in rst_num:
+        lid_dict[l] = str(b) + str(c).zfill(3) + str(v).zfill(3)
+    cursor.close()
+    return lid_dict
+
 
 @app.route('/v2/alignments/books/<srclang>/<trglang>', methods=["GET"])
 def getbooks(srclang, trglang):
@@ -1763,27 +1773,31 @@ def getStrongsList(srclang, trglang):
     cursor.execute("SELECT Strongs, Stage FROM " + alignment_table + " WHERE Strongs IN (" + str(strongsList)[1:-1] + ")")
     stageDict = {}
     for it in cursor.fetchall():
-        if it[1] == 2:
-            checked = 1
-            unchecked = 0
-        else:
-            checked = 0
-            unchecked = 1
-        if it[0] in stageDict:
-            stageDict[it[0]] = {
-                "checked":stageDict[it[0]]["checked"] + checked,
-                "unchecked":stageDict[it[0]]["unchecked"] + unchecked
-            }
-        else:
-            stageDict[it[0]] = {
-                "checked":0 + checked,
-                "unchecked":0 + unchecked
-            }
+        if it[0] == 11:
+            if it[1] == 2:
+                checked = 1
+                unchecked = 0
+            else:
+                checked = 0
+                unchecked = 1
+            if it[0] in stageDict:
+                stageDict[it[0]] = {
+                    "checked":stageDict[it[0]]["checked"] + checked,
+                    "unchecked":stageDict[it[0]]["unchecked"] + unchecked
+                }
+            else:
+                stageDict[it[0]] = {
+                    "checked":0 + checked,
+                    "unchecked":0 + unchecked
+                }
     cursor.close()
     return jsonify(stageDict)
 
 @app.route("/v2/alignments/strongs/<srclang>/<trglang>/<strongsnumber>", methods=["GET"])
 def getStrongsInfo(srclang, trglang, strongsnumber):
+    '''
+    Returns Checked and Unchecked status of a Strongs Number.
+    '''
     connection = connect_db()
     cursor = connection.cursor()
     tablename = getTableName(srclang, trglang)
@@ -1801,7 +1815,7 @@ def getStrongsInfo(srclang, trglang, strongsnumber):
     posDict = {}
 
     #Create positional dict with lids as key and dict of with key as \
-    # position and value as word as value of posDict.
+    # source position and value as word as value of posDict.
     for item in rst:
         if item[4] != 2:
             stage = 0
@@ -1830,15 +1844,16 @@ def getStrongsInfo(srclang, trglang, strongsnumber):
         bCV = lidDict[key]
         phraseCheckList = sorted(list(posDict[key].keys()))
         phraseList = []
-        for k,g in groupby(enumerate(phraseCheckList), lambda x:x[0] - x[1]):
-            phraseList.append(list(map(itemgetter(1), g)))
+        for k,g in groupby(enumerate(phraseCheckList), lambda x:x[0] - x[1]):   #Checks for sequence to 
+            phraseList.append(list(map(itemgetter(1), g)))                      #point to a phrase
         for item in phraseList:
-            joinWords = ' '.join(posDict[key][x]['word'] for x in item)
+            joinWords = ' '.join(posDict[key][x]['word'] for x in item)     # Joins all words according to
+                                                                            # to the positions returned above
             joinStage = [posDict[key][y]['stage'] for y in item]
             trg = posDict[key][item[0]]['positionalPair'].split('-')[1]
             posPairsList = [str(z) + '-' + trg for z in item]
             setOfStage = list(set(joinStage))
-            if len(setOfStage) == 1 and setOfStage[0] == 2:
+            if len(setOfStage) == 1 and setOfStage[0] == 2: # Checks if all words are checked
                 checkedStatus = "checked"
             else:
                 checkedStatus = "unchecked"
@@ -1887,15 +1902,25 @@ def updateCheckedStrongs():
     trglang = req["trglang"]
     strongs = int(req["strongs"])
     word = req["word"]
+    positionData = req["positionData"]
     status = int(req["status"])
+    # wordlist = word.split(" ")
     tablename = getTableName(srclang, trglang)
     connection = connect_db()
     cursor = connection.cursor()
+    lidDict = getLidDict()
+    bcvDict = {v:k for k,v in lidDict.items()}
     if status == 0:
         stage = 2
     else:
         stage = 1
-    cursor.execute("UPDATE " + tablename + " SET Stage=%s WHERE Strongs=%s AND WordSrc=%s", (stage, strongs, word))
+    for k,v in positionData.items():
+        posList = []
+        lid = int(bcvDict[k])
+        for item in v:
+            posList.append(item.split('-')[0])
+        cursor.execute("UPDATE " + tablename + " SET Stage=%s WHERE Strongs=%s AND\
+         LidSrc=%s AND PositionSrc in (" + str(posList)[1:-1] + ")", (stage, strongs, lid))
     connection.commit()
     cursor.close()
     return 'Done'
