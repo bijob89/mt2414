@@ -8,7 +8,7 @@ import itertools
 import time, json
 import pymysql
 
-from TW_strongs_ref_lookup import TWs
+from .TW_strongs_ref_lookup import TWs
 
 
 class FeedbackAligner:
@@ -88,7 +88,7 @@ class FeedbackAligner:
 	def fetch_alignment(self,lid):
 		cur = self.db.cursor()
 
-		print(type(lid))
+		# print(type(lid))
 		cur.execute("SELECT Word, Position FROM "+self.src_table_name+" WHERE LID = %s ORDER BY Position ",(lid))
 		src_word_list = cur.fetchall()
 
