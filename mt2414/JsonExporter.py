@@ -127,8 +127,8 @@ class JsonExporter:
         high = low + 1000
 
         # Fetch Positional pair info from the Range
-        self.db.execute("SELECT LidSrc, PositionSrc, WordSrc, PositionTrg, Strongs, Stage FROM \
-        Hin_4_Grk_UGNT_Alignment WHERE LidSrc >= %s AND LidSrc < %s", (low, high))
+        self.db.execute("SELECT LidSrc, PositionSrc, WordSrc, PositionTrg, Strongs, Stage FROM "\
+        + self.tablename + " WHERE LidSrc >= %s AND LidSrc < %s", (low, high))
         align_rst = self.db.fetchall()
 
         # Fetch Source word list from chopped Bible
@@ -255,10 +255,10 @@ class JsonExporter:
                 trg_text = grk_dict[item].strip()
             else:
                 trg_text = trg_text_dict[item].strip()
-            if src_text_dt[item].strip() != '':
-                src_text = src_text_dt[item].strip()
-            else:
+            if item in src_text_dict:
                 src_text = src_text_dict[item].strip()
+            else:
+                src_text = src_text_dt[item].strip()
             alignments = alignment_dict[item]
             source_list = [0 for i in range(len(alignments))]
 
@@ -273,7 +273,6 @@ class JsonExporter:
                 j_list2.append([[contextId, trg_text, src_text, usfm_text], [source_list, alignments, verified_list]])
             else:
                 j_list2.append([[contextId, trg_text, src_text, []], [source_list, alignments, verified_list]])
-
         j_list = [j_list1] + [j_list2]
 
         metadata = self.metadataArray(j_list[0])
