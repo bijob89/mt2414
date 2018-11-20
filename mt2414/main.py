@@ -1417,17 +1417,6 @@ def lid_to_bcv(num_list):
     cursor.close()
     return bcv_list
 
-def getLidDict():
-    connection = connect_db()
-    cursor = connection.cursor()
-    cursor.execute("SELECT ID, Book, Chapter, Verse FROM Bcv_LidMap")
-    rst_num = cursor.fetchall()
-    lid_dict = {}
-    for l,b,c,v in rst_num:
-        lid_dict[l] = str(b) + str(c).zfill(3) + str(v).zfill(3)
-    cursor.close()
-    return lid_dict
-
 
 @app.route('/v2/alignments/books/<srclang>/<trglang>', methods=["GET"])
 def getbooks(srclang, trglang):
@@ -1696,7 +1685,7 @@ def getlanguages():
     tablesList = list(set([x[0].replace('_History', '') for x in rst]))
     tablesList = [y.replace('_Alignment', '') for y in tablesList]
     for item in tablesList:
-        src, sVer, trg, tVer = item.split('_')
+        src, sVer = item.split('_')[0:2]
         src = src.lower()
         key = src + '-' + sVer
         languageDict[key] = languageList[src]
@@ -1952,7 +1941,7 @@ def resetPassword():
             "subject": "AutographaMT - Reset Password",
             "html": body,
             }
-        cursor.execute("UPDATE users SET Verification_code=%s WHERE Email = %s", (verification_code, email))
+        cursor.execute("UPDATE Users SET Verification_code=%s WHERE Email = %s", (verification_code, email))
         cursor.close()
         connection.commit()
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
@@ -2306,4 +2295,38 @@ def assignTasks(status):
             return '{"success":true, "message":"Update Successful"}'
     else:
         return '{"success":false, "message":"You don\'t have permission to access this resource"}'
+
+@app.route("/v2/alignments/reports/<srclang>/<trglang>", methods=["GET"])
+def generateReport(srclang, trglang):
+    connection = connect_db()
+    cursor = connection.cursor()
+    languageList = getLanguageList()
+    reportDict = {}
+    src = srclang.split('-')[0]
+    tablename = getTableName(srclang, trglang)
+    autoLids = []
+    manualLids = []
+    checkedLids = []
+    cursor.execute("SELECT LidSrc, Stage FROM " + tablename)
+    rst = set(list(cursor.fetchall()))
+    for l,s in rst:
+        if s == 1:
+            manualLids.append(l)
+        elif s == 0:
+            autoLids.append(l)
+        else:
+            checkedLids.append(l)
+    autoLids = set(autoLids)
+    manualLids = set(manualLids)
+    checkedLids = set(checkedLids)
+    autoLids = set(list(autoLids) + list(checkedLids))
+    manualLids = manualLids - checkedLids
+    reportDict[src] = {
+                "total":len(rst),
+                "language":languageList[src.lower()],
+                "autoAlignedCount":len(autoLids),
+                "manualAlignedCount":len(manualLids),
+                "Checked":len(checkedLids)
+            }
+    return jsonify(reportDict)
 

@@ -104,66 +104,18 @@ class JsonExporter:
         }
         return metadata
 
-    def db_text_to_list(self, value):
+
+    def generateVerseInPositionOrderList(self, value):
         text_list = ['' for i in range(len(value))]
         for item in value:
             index = item[0]
-            text_list[int(index) - 1] = item[1]
+            text_list[int(index) - 1] = str(item[1])
         return text_list
 
-    def exportAlignments(self):
 
-        # Create BCV LID Dict
-        lid_dict = {}
-        self.db.execute("SELECT ID, Book, Chapter, Verse FROM Bcv_LidMap WHERE Book = %s", (self.bc,))
-        lid_rst = self.db.fetchall()
-        for l,b,c,v in lid_rst:
-            lid_dict[l] = str(b) + str(c).zfill(3) + str(v).zfill(3)
-
-        bcv_dict = {v:k for k,v in lid_dict.items()}
-
-        # Generate Range for the book selected
-        low = bcv_dict[sorted(list(bcv_dict.keys()))[0]]
-        high = low + 1000
-
-        # Fetch Positional pair info from the Range
-        self.db.execute("SELECT LidSrc, PositionSrc, WordSrc, PositionTrg, Strongs, Stage FROM "\
-        + self.tablename + " WHERE LidSrc >= %s AND LidSrc < %s", (low, high))
-        align_rst = self.db.fetchall()
-
-        # Fetch Source word list from chopped Bible
-        self.db.execute("SELECT LID, Position, Word FROM " + self.src_bible_words_table + \
-        " WHERE LID >= %s AND LID < %s", (low, high))
-        src_rst = self.db.fetchall()
-        src_tup_dict = {}
-        for item in src_rst:
-            if item[0] in src_tup_dict:
-                src_tup_dict[item[0]] = src_tup_dict[item[0]] + [(item[1], item[2])]
-            else:
-                src_tup_dict[item[0]] = [(item[1], item[2])]
-
-        # Fetch Target word list from chopped Bible with LID as key
-        self.db.execute("SELECT LID, Position, Strongs FROM " + self.trg_bible_words_table + \
-        " WHERE LID >= %s AND LID < %s", (low, high))
-        trg_rst = self.db.fetchall()
-        trg_tup_dict = {}
-        for item in trg_rst:
-            if item[0] in trg_tup_dict:
-                trg_tup_dict[item[0]] = trg_tup_dict[item[0]] + [(item[1], item[2])]
-            else:
-                trg_tup_dict[item[0]] = [(item[1], item[2])]
-
-        # Create a dict with LID as key and joined bible words text as value for source and target
-        src_text_dict = {}
-        trg_text_dict = {}
-        for key in src_tup_dict.keys():
-            src_text_dict[key] = " ".join(self.db_text_to_list(src_tup_dict[key]))
-        for key in trg_tup_dict.keys():
-            trg_text_dict[key] = " ".join([str(x) for x in self.db_text_to_list(trg_tup_dict[key])])
-
-
+    def generatePositionalPairsList(self, align_rst):
+        '''Create positional pairs dict with LID as key'''
         stage_dict = {}
-        # Create positional pairs dict with LID as key
         positional_pairs = {}
         for item in align_rst:
             pos_pair = str(item[1]) + '-' + str(item[3])
@@ -172,48 +124,20 @@ class JsonExporter:
             else:
                 positional_pairs[item[0]] = [pos_pair]
             stage_dict[item[0]] = item[5]
+        return (positional_pairs, stage_dict)
 
-        # Fetch Target text
-        self.db.execute("SELECT LID, Position, GreekWord FROM " + self.grk_table)
-        grk_rst = self.db.fetchall()
-        grk_dict = {}
-        grkPosDict = {}
-        for l,p,g in grk_rst:
-            if l in grkPosDict:
-                temp = grkPosDict[l]
-                temp[p] = g
-                grkPosDict[l] = temp
-            else:
-                grkPosDict[l] = {
-                    p:g
-                }
-            grk_dict[g] = g
 
-        for key in grkPosDict.keys():
-            tempList = ['' for i in range(max(grkPosDict[key]))]
-            for k,v in grkPosDict[key].items():
-                if v == None:
-                    v = ''
-                tempList[k - 1] = v
-            grk_dict[key] = ' '.join(tempList)
-            
-    
-        # Fetch Source text
-        self.db.execute("SELECT LID, Verse, usfm from " + self.src_text_table)
-        rst_src_text = self.db.fetchall()
-        src_text_dt = {}
-        src_usfm_dict = {}
-        for item in rst_src_text:
-            src_text_dt[item[0]] = item[1]
-            src_usfm_dict[item[0]] = item[2]
-
+    def getPhraseBasedAlignmentData(self, positional_pairs):
+        '''
+        Creates positional pairs by checking for phrases.
+        '''
         alignment_dict = {}
-        for k in lid_dict.keys():
+        for lid in self.lid_dict.keys():
             align_list = []
             temp_dict = {}
             reverse_temp_dict = {}
-            if k in positional_pairs:
-                v = positional_pairs[k]
+            if lid in positional_pairs:
+                v = positional_pairs[lid]
                 for item in v:
                     s, t = item.split('-')
                     if s in temp_dict:
@@ -231,34 +155,119 @@ class JsonExporter:
                 for ky, val in reverse_temp_dict.items():
                     value1 = []
                     for i in ky.split(' '):
-                        if i == '255':
-                            pass
-                        else:
+                        if i != '255':
                             value1.append(int(i) - 1)
                     value2 = []
                     for j in val.split(' '):
-                        if j == '255':
-                            pass
-                        else:
+                        if j != '255':
                             value2.append(int(j) - 1)
+
                     align_list.append([value1, value2])
-                alignment_dict[k] = align_list
+                alignment_dict[lid] = align_list
+        return alignment_dict
+
+
+    def getBooksLids(self, bookname):
+        '''Create LID BCV Dict for a specific book'''
+
+        lid_dict = {}
+        self.db.execute("SELECT ID, Book, Chapter, Verse FROM Bcv_LidMap WHERE Book = %s", (bookname,))
+        lid_rst = self.db.fetchall()
+        for l,b,c,v in lid_rst:
+            lid_dict[l] = str(b) + str(c).zfill(3) + str(v).zfill(3)
+        return lid_dict        
+
+
+    def getDataFromDB(self, db_fields, tablename, db_param=None, low=None, high=None):
+        '''
+        Fetches Data from DB from an LID range. taking the db fields and parameters as arguments
+        '''
+
+        if db_param != None:
+            param = " WHERE " + db_param + " >= " + str(low) + " AND " + db_param + " < " + str(high)
+        else:
+            param = ""
+        self.db.execute("SELECT " + db_fields + " FROM " + tablename + param)
+        align_rst = self.db.fetchall()
+        return align_rst
+
+
+    def generateTextDictFromDbData(self, dbData):
+        '''
+        Generate LID text Dict From position and word data
+        '''
+
+        lidPositionWordDict = {}
+        for item in dbData:
+            if item[0] in lidPositionWordDict:
+                lidPositionWordDict[item[0]] = lidPositionWordDict[item[0]] + [(item[1], item[2])]
             else:
-                pass
+                lidPositionWordDict[item[0]] = [(item[1], item[2])]
+        lidTextDict = {}     
+        for key in lidPositionWordDict.keys():
+            lidTextDict[key] = " ".join(self.generateVerseInPositionOrderList(lidPositionWordDict[key]))
+        return lidTextDict
+
+
+    def exportAlignments(self):
+        '''
+        Main method to export alignments
+        '''
+        self.lid_dict = self.getBooksLids(self.bc)
+        bcv_dict = {v:k for k,v in self.lid_dict.items()}
+
+        # Generate Range for the book selected
+        low = bcv_dict[sorted(list(bcv_dict.keys()))[0]]
+        high = low + 1000
+
+        alignedDataFromDB = self.getDataFromDB('LidSrc, PositionSrc, WordSrc, PositionTrg, Strongs, Stage', \
+        self.tablename, 'LidSrc', low, high)
+
+        positional_pairs, stage_dict = self.generatePositionalPairsList(alignedDataFromDB)
+
+        # Fetch Source word list from chopped Bible
+
+        src_rst = self.getDataFromDB('LID, Position, Word', self.src_bible_words_table, 'LID', low, high)
+        trg_rst = self.getDataFromDB('LID, Position, Strongs', self.trg_bible_words_table, 'LID', low, high)
+
+        generated_src_text_dict = self.generateTextDictFromDbData(src_rst)
+        generated_trg_text_dict = self.generateTextDictFromDbData(trg_rst)
+
+        # Fetch Target text
+
+        grk_rst = self.getDataFromDB('LID, Position, GreekWord', self.grk_table)
+        grk_text_dict = self.generateTextDictFromDbData(grk_rst)
+
+        # Fetch Full Source text
+
+        src_usfm_db_text = self.getDataFromDB('LID, Verse, usfm', self.src_text_table)
+        src_db_text_dict = {}
+        src_db_usfm_text = {}
+        for item in src_usfm_db_text:
+            src_db_text_dict[item[0]] = item[1]
+            src_db_usfm_text[item[0]] = item[2]
+
+        alignment_dict = self.getPhraseBasedAlignmentData(positional_pairs)
 
         j_list1 = [[self.trg, self.tVer, '0.1'], [self.src, self.sVer, '0.1']]
 
         j_list2 = []
+
         for item in sorted(alignment_dict.keys()):
-            bcv = lid_dict[item]
-            if item in grk_dict:
-                trg_text = grk_dict[item].strip()
+            bcv = self.lid_dict[item]
+
+            if item in grk_text_dict:
+                trg_text = grk_text_dict[item].strip()
             else:
-                trg_text = trg_text_dict[item].strip()
-            if item in src_text_dict:
-                src_text = src_text_dict[item].strip()
+                trg_text = generated_trg_text_dict[item].strip()
+
+
+            if item in generated_src_text_dict:
+                src_text = generated_src_text_dict[item].strip()
             else:
-                src_text = src_text_dt[item].strip()
+                src_text = src_db_text_dict[item].strip()
+
+
             alignments = alignment_dict[item]
             source_list = [0 for i in range(len(alignments))]
 
@@ -266,13 +275,19 @@ class JsonExporter:
                 verified_list = [True for i in range(len(alignments))]
             else:
                 verified_list = [True for i in range(len(alignments))]
+
+
             contextId = str(bcv)[-6:]
             contextId = self.book.upper() + contextId
+
+
             if self.usfmFlag:
-                usfm_text = src_usfm_dict[item]
+                usfm_text = src_db_usfm_text[item]
                 j_list2.append([[contextId, trg_text, src_text, usfm_text], [source_list, alignments, verified_list]])
             else:
                 j_list2.append([[contextId, trg_text, src_text, []], [source_list, alignments, verified_list]])
+
+
         j_list = [j_list1] + [j_list2]
 
         metadata = self.metadataArray(j_list[0])
