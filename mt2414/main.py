@@ -266,6 +266,8 @@ def check_token(f):
                 decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
                 request.email = decoded['sub']
                 request.role = decoded['role']
+                connection = connect_db()
+                cursor = connection.cursor()
                 cursor.execute("SELECT Token FROM Users WHERE Email=%s", (request.email,))
                 savedToken = cursor.fetchone()[0]
             except jwt.exceptions.DecodeError as e:
@@ -1962,7 +1964,7 @@ def changePassword():
         email = rst[0]
         password_salt = str(uuid.uuid4()).replace("-", "")
         password_hash = scrypt.hash(password, password_salt)
-        cursor.execute("UPDATE Users SET Verification_code = %s, Password_hash = %s, Password_salt = %s WHERE Email = %s", (None, password_hash, password_salt, email))
+        cursor.execute("UPDATE Users SET Password_hash = %s, Password_salt = %s WHERE Email = %s", (password_hash, password_salt, email))
         cursor.close()
         connection.commit()
         return '{"success":true, "message":"Password has been reset. Login with the new password."}'
@@ -2019,7 +2021,7 @@ def authenticate():
                     jwt_hs256_secret,
                     algorithm='HS256'
                 ).decode('utf-8')
-                cursor.execute("UPDATE Users SET Token=%s WHERE Email=%s", (email,))
+                cursor.execute("UPDATE Users SET Token=%s WHERE Email=%s", (access_token, email,))
                 connection.commit()
                 cursor.close
                 return '{"access_token":"%s"}' %(access_token)
@@ -2228,13 +2230,14 @@ def getProjectUsers(lang):
         cursor.close()
         if userRoles:
             for role, book, eMail in userRoles:
-                projectUsersRole.append(
-                    {
-                        "user":eMail,
-                        "role":role,
-                        "books":book
-                    }
-                )
+                if book.strip() != "":
+                    projectUsersRole.append(
+                        {
+                            "user":eMail,
+                            "role":role,
+                            "books":book
+                        }
+                    )
             return jsonify(projectUsersRole)
         else:
             return '{"success":false, "message":"No Users assigned under this project"}'
@@ -2329,4 +2332,68 @@ def generateReport(srclang, trglang):
                 "Checked":len(checkedLids)
             }
     return jsonify(reportDict)
+
+
+@app.route("/v2/feedbacks", methods=["POST"])
+def feedbacks():
+    req = request.get_json(True)
+    useremail = req["email"]
+    subject = req["subject"]
+    message = req["feedback"]
+    mainEmail = 'bijo.babu@bridgeconn.com'
+    headers = {"api-key": sendinblue_key}
+    url = "https://api.sendinblue.com/v2.0/email"
+    body = '''
+    %s
+    ''' %(message)
+    payload = {
+        "to": {mainEmail: ""},
+        "from": [useremail, "Autographa MT"],
+        "subject": "AutographaMT - Feedback: %s" %(subject),
+        "html": body,
+        }
+
+    resp = requests.post(url, data=json.dumps(payload), headers=headers)
+    return '{"success":true, "message":"Feedback sent to admin"}'
+
+@app.route("/v2/users/resetpassword", methods=["POST"])
+@check_token
+def resetuserPassword():
+    # req = request.get_json(True)
+    email = request.form["email"]
+    role = request.role
+    if role != 1:
+        connection = connect_db()
+        cursor = connection.cursor()
+        cursor.execute("SELECT Role_id FROM Users WHERE Email=%s", (email,))
+        rst = cursor.fetchone()
+        if not rst:
+            return '{"success":false, "message":"User does not exist"}'
+        else:
+            userRole = rst[0]
+            if (role == 2 and userRole == 1) or (role == 3 and userRole < 3):
+                headers = {"api-key": sendinblue_key}
+                url = "https://api.sendinblue.com/v2.0/email"
+                totp = pyotp.TOTP('base32secret3232')       # python otp module
+                verification_code = totp.now()
+                body = '''Hi,<br/><br/>your request for resetting the password has been recieved. <br/>
+                Your temporary password is %s. Enter your new password by opening this link:
+
+                <a href="https://%s/resetpassword">https://%s/resetpassword</a>
+
+                <br/><br/>The documentation for accessing the API is available at <a href="https://docs.autographamt.com">https://docs.autographamt.com</a>''' % (verification_code, host_ui_url, host_ui_url)
+                payload = {
+                    "to": {email: ""},
+                    "from": ["noreply@autographamt.in", "AutographaMT"],
+                    "subject": "AutographaMT - Reset Password",
+                    "html": body,
+                    }
+                cursor.execute("UPDATE Users SET Verification_code=%s WHERE Email = %s", (verification_code, email))
+                cursor.close()
+                resp = requests.post(url, data=json.dumps(payload), headers=headers)
+                return '{"success":true, "message":"Reset Link sent to email"}'
+            else:
+                return '{"success":false, "message":"You don\'t have permission to edit this user"}'
+    else:
+        return '{"success":false, "message":"You don\'t have permission to access this resource"}'
 
