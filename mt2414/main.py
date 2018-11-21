@@ -1731,23 +1731,22 @@ def getStrongsList(srclang, trglang):
     cursor.execute("SELECT Strongs, Stage FROM " + alignment_table + " WHERE Strongs IN (" + str(strongsList)[1:-1] + ")")
     stageDict = {}
     for it in cursor.fetchall():
-        if it[0] == 11:
-            if it[1] == 2:
-                checked = 1
-                unchecked = 0
-            else:
-                checked = 0
-                unchecked = 1
-            if it[0] in stageDict:
-                stageDict[it[0]] = {
-                    "checked":stageDict[it[0]]["checked"] + checked,
-                    "unchecked":stageDict[it[0]]["unchecked"] + unchecked
-                }
-            else:
-                stageDict[it[0]] = {
-                    "checked":0 + checked,
-                    "unchecked":0 + unchecked
-                }
+        if it[1] == 2:
+            checked = 1
+            unchecked = 0
+        else:
+            checked = 0
+            unchecked = 1
+        if it[0] in stageDict:
+            stageDict[it[0]] = {
+                "checked":stageDict[it[0]]["checked"] + checked,
+                "unchecked":stageDict[it[0]]["unchecked"] + unchecked
+            }
+        else:
+            stageDict[it[0]] = {
+                "checked":0 + checked,
+                "unchecked":0 + unchecked
+            }
     cursor.close()
     return jsonify(stageDict)
 
