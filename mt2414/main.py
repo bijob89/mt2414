@@ -2106,7 +2106,7 @@ def getUserAssignedTasks(email):
     for role, books, project, organisation in workAssignedToUser:
         WATU.append(
             {
-                "role":role,
+                "role":role.lower(),
                 "books":books,
                 "project":project,
                 "organisation":organisation
