@@ -65,7 +65,8 @@ def connect_db():
     Opens a connection with MySQL Database
     """
     if not hasattr(g, 'db'):
-        g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+        # g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+        g.db = pymysql.connect(host='localhost',database='new_structure', user='root', password='11111111', charset='utf8mb4')
     return g.db
 
 
@@ -1292,72 +1293,16 @@ def getLid(bcv):
     cursor.close()
     return lid
 
-def db_text_to_list(value):
+def generatePositionalTextList(value):
     text_list = ['' for i in range(len(value))]
-    for item in value:
-        index = item[0]
-        text_list[int(index) - 1] = item[1]
+    if type(value) == dict:
+        for ky in value.keys():
+            text_list[int(ky) - 1] = value[ky]
+    else:
+        for item in value:
+            index = item[0]
+            text_list[int(index) - 1] = item[1]
     return text_list
-
-def parseAlignmentData(lid, srclang, trglang, alignmentData):
-    connection = connect_db()
-    cursor = connection.cursor()
-    src, sVer = srclang.split('-')
-    trg, tVer = trglang.split('-')
-    src_bible_words_table = '%s_%s_BibleWord' %(src.capitalize(), sVer.upper())
-    trg_bible_words_table = '%s_%s_BibleWord' %(trg.capitalize(), tVer.upper())
-    cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
-    source_text = db_text_to_list(cursor.fetchall())
-    cursor.execute("SELECT Position, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (lid,))
-    target_text = db_text_to_list(cursor.fetchall())
-    englishword = []
-    lexicandata = {}
-
-    for t_item in alignmentData[1]:
-        strongs = t_item[0]
-        lex_dict = t_item[3]
-        if lex_dict['EnglishULB_NASB_Lex_Combined'].strip() == "":
-            englishWord = "-"
-        else:
-            englishWord = lex_dict['EnglishULB_NASB_Lex_Combined'].strip()
-        englishword.append(englishWord)
-        pattern = {
-                    "strongs": strongs,
-                    "pronunciation": lex_dict['Pronounciation'],
-                    "sourceword": lex_dict['GreekWord'],
-                    "transliteration": lex_dict['Transliteration'],
-                    "definition": lex_dict['Definition'],
-                    "targetword": englishWord
-                    }
-        if t_item[0] not in lexicandata:
-            lexicandata[t_item[0]] = pattern
-
-    auto_alignments = []
-    for a_item in alignmentData[2]:
-        trg = a_item[1][1]
-        src = a_item[0][1]
-        auto_alignments.append(str(src) + '-' + str(trg))
-
-    corrected_alignments = []
-    for c_item in alignmentData[3]:
-        trg = c_item[1][1]
-        src = c_item[0][1]
-        corrected_alignments.append(str(src) + '-' + str(trg))
-
-    replacement_options = []
-    for r_item in alignmentData[4]:
-        trg = r_item[1][1]
-        src = r_item[0][1]
-        replacement_options.append(str(src) + '-' + str(trg))
-    position_pairs = corrected_alignments + \
-                            [x for x in auto_alignments if x not in corrected_alignments]
-    colorcode = [1 for i in range(len(corrected_alignments))] + \
-                            [0 for i in range(len(position_pairs) - len(corrected_alignments))]
-
-    final_position_pairs = position_pairs + [y for y in replacement_options if y not in position_pairs]
-    colorcode = colorcode + [2 for i in range(len(final_position_pairs) - len(position_pairs))]
-    cursor.close()
-    return (source_text, target_text, final_position_pairs, colorcode, replacement_options, englishword, lexicandata)
 
 
 def getTableName(srclang, trglang):
@@ -1366,25 +1311,148 @@ def getTableName(srclang, trglang):
     tablename = '%s_%s_%s_%s_Alignment' %(src.capitalize(),sVer.upper(), trg.capitalize(), tVer.upper())
     return tablename
 
+def getFromBibleWords(field, lid, tablename):
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT Position, " + field + " FROM " + tablename + " WHERE LID=%s", (lid,))
+    bibleWordsRst = cursor.fetchall()
+    bibleWordsList = ["" for i in range(len(bibleWordsRst))]
+    for p, f in bibleWordsRst:
+        bibleWordsList[int(p) - 1] = f
+    cursor.close()
+    return bibleWordsList
 
-@app.route('/v2/alignments/<bcv>/<srclang>/<trglang>', methods=["GET"])
-def getalignments(bcv, srclang, trglang):
+def generateLexicanData(lidList):
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT LID, Position, Strongs, GreekWord, Transliteration, \
+    EnglishULB_NASB_Lex_Combined, Pronounciation, Definition FROM Grk_Eng_Aligned_Lexicon WHERE LID in (" + str(lidList)[1:-1] + ")")
+    lexicanData = {}
+    englishPosDict = {}
+    for ld, pos, srn, grkwd, translit, eng, pron, defn in cursor.fetchall():
+        pattern = {
+                    "strongs": srn,
+                    "pronunciation": pron,
+                    "sourceword": grkwd,
+                    "transliteration": translit,
+                    "definition": defn,
+                    "targetword": eng
+                    }
+        lexicanData[srn] = pattern
+        if ld in englishPosDict:
+            temp = englishPosDict[ld]
+            temp[pos] = eng
+            englishPosDict[ld] = temp
+        else:
+            englishPosDict[ld] = {
+                pos:eng
+            }
+    cursor.close()
+    return (lexicanData, englishPosDict)
+
+def generatePositionalPairsAndColorCode(lid, tablename):
+    connection = connect_db()
+    cursor = connection.cursor()
+    positionalPairs = []
+    colorCode = []
+    cursor.execute("SELECT LidTrg, PositionSrc, PositionTrg, Stage FROM \
+    " + tablename + " WHERE LidSrc=%s", (lid,))
+    for lt, pSrc, pTrg, st in cursor.fetchall():
+        positionalPairs.append(
+            {
+                lt: {
+                    "pairs": str(pSrc) + "-" + str(pTrg)
+                    }
+            }
+        )
+        colorCode.append(st)
+    cursor.close()
+    return (positionalPairs, colorCode)
+    
+
+@app.route('/v2/alignments/<bcv>/<srclang>/<trglang>/<status>', methods=["GET"])
+def getalignments(bcv, srclang, trglang, status):
     '''
     Returns list of positional pairs, list of Hindi words, list of strong numbers for the bcv queried. 
     '''
     connection = connect_db()
+    cursor = connection.cursor()
+    
     src, sVer = srclang.split('-')
     trg, tVer = trglang.split('-')
     lid = getLid(bcv)
-    fb = FeedbackAligner(connection, src.capitalize(), sVer.upper(), trg.capitalize(), tVer.upper())
-    result = fb.fetch_alignment(lid)
-    source_text, target_text, position_pairs, colorcode, replacement_options, \
-                            englishword, lexicandata = parseAlignmentData(lid, srclang, trglang, result)
-    cursor = connection.cursor()
-    cursor.close()
-    return jsonify({'positionalpairs':position_pairs, 'targettext':source_text,\
-     'sourcetext':target_text, 'englishword':englishword, 'colorcode':colorcode, 'lexicondata': lexicandata})
+    tablename = getTableName(srclang, trglang)
 
+    src_bible_words_table = "%s_%s_BibleWord" %(src.capitalize(), sVer.upper())
+    trg_bible_words_table = "%s_%s_BibleWord" %(trg.capitalize(), tVer.upper())
+
+    cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
+    srcTextList = generatePositionalTextList(cursor.fetchall())
+    cursor.execute("SELECT Position, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (lid,))
+    trgTextList = generatePositionalTextList(cursor.fetchall())
+    
+    if status == "true":
+        startLid = lid - 4
+        lidList = [startLid + i for i in range(0,9)]
+        positionalPairs, colorCode = generatePositionalPairsAndColorCode(lid, tablename)
+        
+        strongsDict = {}
+        cursor.execute("SELECT LID, Position, Strongs FROM Grk_UGNT_BibleWord WHERE LID in (" + str(lidList)[1:-1] + ")")
+        for l, p, s in cursor.fetchall():
+            if l in strongsDict:
+                temp = strongsDict[l]
+                temp[p] = s
+                strongsDict[l] = temp
+            else:
+                strongsDict[l] = {
+                    p:s
+                }
+        lexicanData, englishPosDict = generateLexicanData(lidList)
+
+        strongsCompleteList = []
+        for key in sorted(list(strongsDict)):
+            strongsList = generatePositionalTextList(strongsDict[key])
+            strongsCompleteList.append(strongsList)
+
+        englishWordsList = []
+        for key in sorted(list(englishPosDict.keys())):
+            englishList = generatePositionalTextList(englishPosDict[key])
+            englishWordsList.append(englishList)
+
+        jsonElement = {
+            "lid": lid,
+            "LidList": lidList,
+            "prevFourStrongsList": strongsCompleteList[0:4],
+            "nextFourStrongsList": strongsCompleteList[5:],
+            "prevFourEnglishWordsList": englishWordsList[0:4],
+            "nextFourEnglishWordsList": englishWordsList[5:],
+            "colorCode": colorCode,
+            "lexcanData": lexicanData,
+            "sourceText": srcTextList,
+            "targetText": strongsCompleteList[4],
+            "englishWord": englishWordsList[4],
+            "positionalPairs": positionalPairs
+        }
+    else:
+        positionalPairs, colorCode = generatePositionalPairsAndColorCode(lid, tablename)
+        lexicanData, englishPosDict = generateLexicanData([lid])
+
+        englishWord = []
+        for key in sorted(list(englishPosDict.keys())):
+            englishWord = generatePositionalTextList(englishPosDict[key])
+
+        jsonElement = {
+            "lid":lid,
+            "colorCode": colorCode,
+            "lexcanData": lexicanData,
+            "sourceText": srcTextList,
+            "targetText": trgTextList,
+            "englishWord": englishWord,
+            "positionalPairs": positionalPairs
+        }
+
+    cursor.close()
+    return jsonify(jsonElement)
 
 def getLidDict():
     '''
@@ -1563,24 +1631,28 @@ assigned yet. Contact Administrator"}'
             src_bible_words_table = '%s_%s_BibleWord' %(src.capitalize(), sVer.upper())
             trg_bible_words_table = '%s_%s_BibleWord' %(trg.capitalize(), tVer.upper())
             cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
-            src_text_list = db_text_to_list(cursor.fetchall())
+            src_text_list = generatePositionalTextList(cursor.fetchall())
             cursor.execute("SELECT Position, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (lid,))
-            trg_text_list = db_text_to_list(cursor.fetchall())
+            trg_text_list = generatePositionalTextList(cursor.fetchall())
             stage = list(set(position_pairs))
             final_position_pairs = []
-            for item in stage:
-                split_item = item.split('-')
-                src_pos = split_item[0]
-                trg_pos = split_item[1]
-                if src_pos == '255':
-                    src_word = None
-                else:
-                    src_word = src_text_list[int(src_pos) - 1]
-                if trg_pos == '255':
-                    trg_word = None
-                else:
-                    trg_word = trg_text_list[int(trg_pos) - 1]
-                final_position_pairs.append(((lid, src_pos, src_word),(lid, trg_pos, trg_word)))
+            # for item in stage:
+            #     split_item = item.split('-')
+            #     src_pos = split_item[0]
+            #     trg_pos = split_item[1]
+            #     if src_pos == '255':
+            #         src_word = None
+            #     else:
+            #         src_word = src_text_list[int(src_pos) - 1]
+            #     if trg_pos == '255':
+            #         trg_word = None
+            #     else:
+            #         trg_word = trg_text_list[int(trg_pos) - 1]
+            for item in position_pairs:
+                sourceWord = src_text_list[int(item["sPos"] - 1)]
+                targetWord = trg_text_list[int(item["tPos"] - 1)]
+                final_position_pairs.append(((item["sourceLid"], item["sPos"], sourceWord), (item["targetLid"], item["tPos"], targetWord)))
+                # final_position_pairs.append(((lid, src_pos, src_word),(lid, trg_pos, trg_word)))
             fb = FeedbackAligner(connection, src.capitalize(), '4', trg.capitalize(), 'UGNT')
             fb.save_alignment_full_verse(lid, final_position_pairs, userId, None, 1)
             connection.commit()
