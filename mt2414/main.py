@@ -1295,14 +1295,27 @@ def getLid(bcv):
 
 def generatePositionalTextList(value):
     text_list = ['' for i in range(len(value))]
+    strongsList = ["" for i in range(len(value))]
+    textObj = {}
     if type(value) == dict:
         for ky in value.keys():
             text_list[int(ky) - 1] = value[ky]
     else:
-        for item in value:
-            index = item[0]
-            text_list[int(index) - 1] = item[1]
-    return text_list
+        if len(value[0]) > 2:
+            for item in value:
+                index = int(item[0]) - 1
+                text_list[index] = item[1]
+                strongsList[index] = item[2]
+        else:
+            for item in value:
+                index = item[0]
+                text_list[int(index) - 1] = item[1]
+    textObj = {
+        "text": text_list
+    }
+    if list(set(strongsList))[0] != "":
+        textObj["strongs"] = strongsList
+    return textObj
 
 
 def getTableName(srclang, trglang):
@@ -1357,15 +1370,19 @@ def generatePositionalPairsAndColorCode(lid, tablename):
     colorCode = []
     cursor.execute("SELECT LidTrg, PositionSrc, PositionTrg, Stage FROM \
     " + tablename + " WHERE LidSrc=%s", (lid,))
+    trgLidDict = {}
     for lt, pSrc, pTrg, st in cursor.fetchall():
-        positionalPairs.append(
-            {
-                lt: {
-                    "pairs": str(pSrc) + "-" + str(pTrg)
-                    }
+        if lt in trgLidDict:
+            temp = trgLidDict[lt]
+            temp["pairs"] = temp["pairs"] + [str(pSrc) + "-" + str(pTrg)]
+            temp["colorCode"] = temp["colorCode"] + [st]
+            trgLidDict[lt] = temp
+        else:
+            trgLidDict[lt] = {
+                "pairs":[str(pSrc) + "-" + str(pTrg)],
+                "colorCode": [st]
             }
-        )
-        colorCode.append(st)
+    positionalPairs.append(trgLidDict)
     cursor.close()
     return (positionalPairs, colorCode)
     
@@ -1386,51 +1403,86 @@ def getalignments(bcv, srclang, trglang, status):
     src_bible_words_table = "%s_%s_BibleWord" %(src.capitalize(), sVer.upper())
     trg_bible_words_table = "%s_%s_BibleWord" %(trg.capitalize(), tVer.upper())
 
-    cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
-    srcTextList = generatePositionalTextList(cursor.fetchall())
-    cursor.execute("SELECT Position, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (lid,))
-    trgTextList = generatePositionalTextList(cursor.fetchall())
+    if src.lower() == "grk":
+        cursor.execute("SELECT Position, Word, Strongs FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
+    else:
+        cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
+    sourceContent = generatePositionalTextList(cursor.fetchall())
+    srcTextList = sourceContent["text"]
+    # print(srcTextList)
+    srcStrongsList = None
+    if len(sourceContent) > 1:
+        srcStrongsList = sourceContent["strongs"]
+    cursor.execute("SELECT Position, Word, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (lid,))
+    targetContent = generatePositionalTextList(cursor.fetchall())
+    trgTextList = targetContent["text"]
+    trgStrongsList = targetContent["strongs"]
     
     if status == "true":
         startLid = lid - 4
-        lidList = [startLid + i for i in range(0,9)]
+        lidList = [startLid + i for i in range(0,9) if (startLid + i) > 23145]
+        lidList = [l for l in lidList if l < 31103]
         positionalPairs, colorCode = generatePositionalPairsAndColorCode(lid, tablename)
         
         strongsDict = {}
-        cursor.execute("SELECT LID, Position, Strongs FROM Grk_UGNT_BibleWord WHERE LID in (" + str(lidList)[1:-1] + ")")
-        for l, p, s in cursor.fetchall():
+        greekDict = {}
+        cursor.execute("SELECT LID, Position, Strongs, Word FROM Grk_UGNT_BibleWord WHERE LID in (" + str(lidList)[1:-1] + ")")
+        for l, p, s, w in cursor.fetchall():
             if l in strongsDict:
-                temp = strongsDict[l]
-                temp[p] = s
-                strongsDict[l] = temp
+                tempStrongs = strongsDict[l]
+                tempGreek = greekDict[l]
+                tempStrongs[p] = s
+                tempGreek[p] = w
+                strongsDict[l] = tempStrongs
+                greekDict[l] = tempGreek
             else:
                 strongsDict[l] = {
                     p:s
+                }
+                greekDict[l] = {
+                    p: w
                 }
         lexicanData, englishPosDict = generateLexicanData(lidList)
 
         strongsCompleteList = []
         for key in sorted(list(strongsDict)):
             strongsList = generatePositionalTextList(strongsDict[key])
-            strongsCompleteList.append(strongsList)
+            strongsCompleteList.append(strongsList["text"])
+
+        greekCompleteList = []
+        for key in sorted(list(greekDict)):
+            greekList = generatePositionalTextList(greekDict[key])
+            greekCompleteList.append(greekList["text"])
 
         englishWordsList = []
         for key in sorted(list(englishPosDict.keys())):
             englishList = generatePositionalTextList(englishPosDict[key])
-            englishWordsList.append(englishList)
+            englishWordsList.append(englishList["text"])
+
+        targetObj = {}
+        for i in range(len(strongsCompleteList)):
+            targetObj[lidList[i]] = {
+                trg + "_text": greekCompleteList[i],
+                "strongs": strongsCompleteList[i],
+                "english": englishWordsList[i]
+            }
+
+        sourceObj = {}
+        sourceObj[lid] = {
+            src + "_text": srcTextList,
+        }
+        if srcStrongsList:
+            temp = sourceObj[lid]
+            temp["strongs"] = srcStrongsList
+            sourceObj[lid] = temp
+
 
         jsonElement = {
             "lid": lid,
             "LidList": lidList,
-            "prevFourStrongsList": strongsCompleteList[0:4],
-            "nextFourStrongsList": strongsCompleteList[5:],
-            "prevFourEnglishWordsList": englishWordsList[0:4],
-            "nextFourEnglishWordsList": englishWordsList[5:],
-            "colorCode": colorCode,
-            "lexcanData": lexicanData,
-            "sourceText": srcTextList,
-            "targetText": strongsCompleteList[4],
-            "englishWord": englishWordsList[4],
+            "sourceContent": sourceObj,
+            "targetContent": targetObj,
+            "lexicanData": lexicanData,
             "positionalPairs": positionalPairs
         }
     else:
@@ -1444,10 +1496,9 @@ def getalignments(bcv, srclang, trglang, status):
         jsonElement = {
             "lid":lid,
             "colorCode": colorCode,
-            "lexcanData": lexicanData,
-            "sourceText": srcTextList,
-            "targetText": trgTextList,
-            "englishWord": englishWord,
+            "lexicanData": lexicanData,
+            "sourceContent": srcTextList,
+            "targetContent": trgTextList,
             "positionalPairs": positionalPairs
         }
 
