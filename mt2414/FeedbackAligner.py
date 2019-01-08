@@ -8,7 +8,7 @@ import itertools
 import time, json
 import pymysql
 
-from .TW_strongs_ref_lookup import TWs
+from TW_strongs_ref_lookup import TWs
 
 
 class FeedbackAligner:
@@ -90,7 +90,7 @@ class FeedbackAligner:
 
 		# print(type(lid))
 		cur.execute("SELECT Word, Position from Eng_ULB_BibleWord where LID = %s Order by Position",(lid))
-		eng_word_list = cur.fetchall()
+		eng_verse_word_list = cur.fetchall()
 
 		cur.execute("SELECT Word, Position FROM "+self.src_table_name+" WHERE LID = %s ORDER BY Position ",(lid))
 		src_word_list = cur.fetchall()
@@ -141,7 +141,7 @@ class FeedbackAligner:
 		corrected_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[8]!=0]
 		replacement_options = []
 		
-		return list(src_word_list), list(trg_word_list), auto_alignments, corrected_alignments, replacement_options, list(eng_word_list)
+		return list(src_word_list), list(trg_word_list), auto_alignments, corrected_alignments, replacement_options, list(eng_verse_word_list)
 	
 
 
@@ -248,6 +248,8 @@ if __name__ == '__main__':
 	print("corrected_alignments:"+str(corrected_alignments))
 	print("\n")
 	print("replacement_options:"+str(replacement_options))
+	print("\n")
+	print("english_word_list:"+str(eng_word_list))
 
 
 
