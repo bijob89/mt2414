@@ -27,18 +27,18 @@ class FeedbackAligner:
 		cur.execute("SHOW TABLES LIKE '"+self.src_table_name+"'")
 		if cur.rowcount==0:
 			print("Table not found: "+self.src_table_name)
-			sys.exit(0)
+			sys.exit(1)
 
 
 		cur.execute("SHOW TABLES LIKE '"+self.trg_table_name+"'")
 		if cur.rowcount==0:
 			print("Table not found: "+self.trg_table_name)
-			sys.exit(0)
+			sys.exit(1)
 			
 		cur.execute("SHOW TABLES LIKE '"+self.alignment_table_name+"'")
 		if cur.rowcount==0:
 			print("Table not found: "+self.alignment_table_name)
-			sys.exit(0)
+			sys.exit(1)
 
 
 		
