@@ -89,6 +89,9 @@ class FeedbackAligner:
 		cur = self.db.cursor()
 
 		# print(type(lid))
+		cur.execute("SELECT Word, Position from Eng_ULB_BibleWord where LID = %s Order by Position",(lid))
+		eng_word_list = cur.fetchall()
+
 		cur.execute("SELECT Word, Position FROM "+self.src_table_name+" WHERE LID = %s ORDER BY Position ",(lid))
 		src_word_list = cur.fetchall()
 
@@ -138,7 +141,7 @@ class FeedbackAligner:
 		corrected_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[8]!=0]
 		replacement_options = []
 		
-		return list(src_word_list), list(trg_word_list), auto_alignments, corrected_alignments, replacement_options
+		return list(src_word_list), list(trg_word_list), auto_alignments, corrected_alignments, replacement_options, list(eng_word_list)
 	
 
 
@@ -235,7 +238,7 @@ if __name__ == '__main__':
 	
 	#obj.on_approve_feedback([("2424 5547","यीशु मसीह"),("5207","सन्तान"),("5257 5547","मसीह . सेवक")])
 
-	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment(23146)
+	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options, eng_word_list = obj.fetch_alignment(23146)
 	print("src_word_list:"+str(src_word_list))
 	print("\n")
 	print("trg_word_list:"+str(trg_word_list))
