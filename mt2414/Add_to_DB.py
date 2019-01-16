@@ -57,7 +57,7 @@ def initialize_DB_BibleWordtable_UHB(tablename):
 		print("created new table:"+tablename)
 	else:
 		cursor.execute("TRUNCATE " + tablename)
-		# print("emptied existing table: "+tablename)
+		print("emptied existing table: "+tablename)
 	db.commit()
 		
 
@@ -182,38 +182,147 @@ def createDBEntry_UGNT_BibleWord(book,tablename):
 	db.commit()
 	return 'Done'
 
+DB_entry_count = 0
+Skip_count = 0
+
+UHB_verses_2_ignore = [
+(2,	21,	37),
+(4,	26,	1),
+(9,	20,	42),
+(13,	12,	4),
+(19,	3,	1),
+(19,	4,	1),
+(19,	5,	1),
+(19,	6,	1),
+(19,	7,	1),
+(19,	8,	1),
+(19,	9,	1),
+(19,	12,	1),
+(19,	13,	1),
+(19,	18,	1),
+(19,	19,	1),
+(19,	20,	1),
+(19,	21,	1),
+(19,	22,	1),
+(19,	30,	1),
+(19,	31,	1),
+(19,	34,	1),
+(19,	36,	1),
+(19,	38,	1),
+(19,	39,	1),
+(19,	40,	1),
+(19,	41,	1),
+(19,	42,	1),
+(19,	44,	1),
+(19,	45,	1),
+(19,	46,	1),
+(19,	47,	1),
+(19,	48,	1),
+(19,	49,	1),
+(19,	51,	1),
+(19,	52,	1),
+(19,	53,	1),
+(19,	54,	1),
+(19,	55,	1),
+(19,	56,	1),
+(19,	57,	1),
+(19,	58,	1),
+(19,	59,	1),
+(19,	60,	1),
+(19,	61,	1),
+(19,	62,	1),
+(19,	63,	1),
+(19,	64,	1),
+(19,	65,	1),
+(19,	67,	1),
+(19,	68,	1),
+(19,	69,	1),
+(19,	70,	1),
+(19,	75,	1),
+(19,	76,	1),
+(19,	77,	1),
+(19,	80,	1),
+(19,	81,	1),
+(19,	83,	1),
+(19,	84,	1),
+(19,	85,	1),
+(19,	88,	1),
+(19,	89,	1),
+(19,	92,	1),
+(19,	102,	1),
+(19,	108,	1),
+(19,	140,	1),
+(19,	142,	1)
+
+]
 
 def createDBEntry_UHB_BibleWord(book,tablename):
-	
+	global DB_entry_count, Skip_count, UHB_verses_2_ignore
+
+
 	book_num = book['BookCode']
 	for chap in book['Chapters']:
 		chap_num  = chap['ChapterNumber']
 		for verse in chap['Verses']:
 			verse_num = verse['VerseNumber']
-			print(str(book_num)+"\t"+str(chap_num)+"\t"+str(verse_num))
-			continue
+			if (int(book_num),chap_num,verse_num) in UHB_verses_2_ignore:
+				print("skipping: "+str((book_num,chap_num,verse_num)))
+				Skip_count += 1
+				continue
+
+
 			try:
-				cursor.execute("select ID from Bcv_LidMap where Book=%s and Chapter=%s and Verse=%s",(book_num,chap_num,verse_num))
-				lid = cursor.fetchone()
-				
+				cursor.execute("select KJV_Book, KJV_Chapter, KJV_Verse from WLC_KJV_VersificationMap where WLC_Book=%s and WLC_Chapter=%s and WLC_Verse=%s",(book_num,chap_num,verse_num))
+				res = cursor.fetchone()
+				if res:
+					new_book_num = res[0]
+					new_chap_num = res[1]
+					new_verse_num = res[2]
+					cursor.execute("select ID from Bcv_LidMap where Book=%s and  Chapter=%s and Verse=%s",(new_book_num,new_chap_num,new_verse_num))
+					lid = cursor.fetchone()
+				else:
+					cursor.execute("select ID from Bcv_LidMap where Book=%s and  Chapter=%s and Verse=%s",(book_num,chap_num,verse_num))
+					lid = cursor.fetchone()
+
+				if lid:
+					lid = lid[0]
+				else:
+					if (book_num,chap_num,verse_num) == (11,	22,	44):
+						lid = 9524
+					else:
+						print("skipping: "+str((book_num,chap_num,verse_num)))
+						Skip_count += 1
+						continue
+								
 			except Exception as e:
 				print("error at fetching lid for Book="+str(book_num)+",Chapter="+str(chap_num)+",Verse="+str(verse_num))
 				raise e
 			word_sequence = verse["Text"]
 			strong_sequence = verse["Strongs"]
 
+			# print("inserting:\t"+str(lid)+"\t"+str(book_num)+"\t"+str(chap_num)+"\t"+str(verse_num))
 			pos = 1
 			for word,strongs,lemma,morph in zip(word_sequence,strong_sequence,verse["Lemma"],verse["Morph"]):
+				
 				try:
 					romanized_text = unidecode(word)
+					if lid == 9524:
+						cursor.execute("Select max(Position) from "+tablename+" where LID=9524;")
+						prev_pos =cursor.fetchone()[0]
+						if prev_pos:
+							pos = prev_pos + 1
+							print('updated pos for 1Kings 22:44')
+						
 					cursor.execute("INSERT INTO " + tablename + " (LID, Position, Word, Strongs,Lemma,Morph, Pronunciation) VALUES (%s,%s,%s,%s,%s,%s,%s)",(lid,pos,word,strongs,lemma,morph,romanized_text))
-					
 				except Exception as e:
 					print("error at:")
 					print(str(lid)+"\t"+str(pos)+"\t"+word+"\t"+str(strongs))
 					print('Skipping this DB entry')
 					raise e
 				pos =pos+1
+			DB_entry_count += 1
+	# print("Skipped till now "+str(Skip_count)+" verses")
+	# print("Inserted till now "+str(DB_entry_count)+" verses to DB!")
 	db.commit()
 	return 'Done'
 
@@ -348,7 +457,7 @@ def parse_UHB_files(path,tablename):
 
 	this_book = {}
 	for f in files:
-		# print("working on: "+f)
+		print("working on: "+f)
 		fc = open(f, 'r').read().strip()
 		bookName = re.search(bookname_pattern, fc).group(1)
 		bc = bookNamesDict[bookName]
@@ -368,7 +477,7 @@ def parse_UHB_files(path,tablename):
 				morph_sequence = []
 				for word in splitWord[1:]:
 					text = '-'
-					strong = '-'
+					strong = None
 					lemma = '-'
 					morph = '-'
 					tw = '-'
