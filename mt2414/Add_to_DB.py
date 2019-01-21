@@ -76,14 +76,7 @@ def initialize_DB_BibleWordtable(tablename):
 	cursor.execute("select * from information_schema.tables where table_schema = %s  and table_name= %s", (db_name, tablename))
 	rst = cursor.fetchone()
 	if not rst:
-		commands = '''
-				CREATE TABLE ''' + tablename + ''' (
-				LID smallint(5) unsigned,
-				Position tinyint(3) unsigned ,
-				Word varchar(30) charset utf8mb4,
-				Foreign Key(LID) references Bcv_LidMap(ID)
-			)
-			'''
+		commands = '''	CREATE TABLE ''' + tablename + ''' like Hin_4_BibleWord	'''
 		cursor.execute(commands)
 		print("created new table:"+tablename)
 	else:
@@ -327,7 +320,7 @@ def createDBEntry_UHB_BibleWord(book,tablename):
 	return 'Done'
 
 
-def createDBEbtry_Text_Usfm(book,tablename):
+def updateDBEbtry_Text_Usfm(book,tablename):
 	
 	book_num = book['BookCode']
 	for chap in book['Chapters']:
@@ -383,7 +376,8 @@ Heb_lemma_pattern = re.compile('\|lemma="([^"]+)" ')
 Grk_morph_pattern = re.compile(' x-morph="([a-zA-Z,]+)')
 Heb_morph_pattern = re.compile(' x-morph="([a-zA-Z0-9,:]+)')
 tw_pattern = re.compile(' x-tw="([a-zA-Z0-9:/*_]+)"')
-non_letters = [',', '"', '!', '.', '\n', '\\']
+non_letters = [',', '"', '!', '.', '\n', '\\','“','”','*']
+cross_ref_pattern = re.compile('\([^())]+\)')
 
 def parse_UGNT_files(path,tablename):
 	print(path+"/*.usfm")
@@ -532,7 +526,82 @@ def parse_files_with_Usfm_markers(path,tablename):
 						verse = book_headers+ verse
 					this_chapter['Verses'].append({'VerseNumber':verse_num,'Usfm':verse})
 				this_book['Chapters'].append(this_chapter)
-			# createDBEbtry_Text_Usfm(this_book,tablename)
+			# updateDBEbtry_Text_Usfm(this_book,tablename)
+
+
+def parse_files_with_Usfm_and_Text(path,tablename):
+	files = glob.glob(path+"/*.SFM")
+	files.sort()
+
+	initialize_DB_Bible_text(tablename)
+
+	this_book = {}
+	for f in files:
+			print('working on '+f)
+			fc = open(f, 'r').read().strip()
+			bookName = re.search(bookname_pattern, fc).group(1)
+			bc = bookNamesDict[bookName]
+			this_book = {'BookName':bookName,'BookCode':bc,"Chapters":[]}
+			splitChap = fc.split('\c')
+			book_headers = splitChap[0]+"\c"
+			for chap in splitChap[1:]:
+				chap_num = int(re.search(chapter_num_pattern,chap).group(1))
+				this_chapter = {'ChapterNumber':chap_num,'Verses':[]}
+				splitVerse = chap.split('\\v')
+				chap_headers = splitVerse[0]
+				for verse in splitVerse[1:]:
+					verse_num = int(re.search(verse_num_pattern,verse).group(1))
+					verse_full_text = verse
+					clean_text = verse_full_text.split('\n')[0].strip()
+					clean_text = ' '.join(clean_text.split(' ')[1:])
+					usfm = "\\v"+verse
+					if verse_num == 1:
+						usfm = "\c"+chap_headers+usfm
+					if verse_num == 1 and chap_num == 1:
+						usfm = book_headers+ usfm
+					this_chapter['Verses'].append({'VerseNumber':verse_num,'Usfm':usfm,'Text':clean_text})
+				this_book['Chapters'].append(this_chapter)
+			createDBEntry_Text_table(this_book,tablename)
+			# break
+
+def parse_files_for_BibleWord(path,tablename):
+	files = glob.glob(path+"/*.SFM")
+	files.sort()
+
+	initialize_DB_BibleWordtable(tablename)
+
+	this_book = {}
+	for f in files:
+			print('working on '+f)
+			fc = open(f, 'r').read().strip()
+			bookName = re.search(bookname_pattern, fc).group(1)
+			bc = bookNamesDict[bookName]
+			this_book = {'BookName':bookName,'BookCode':bc,"Chapters":[]}
+			splitChap = fc.split('\c')
+			book_headers = splitChap[0]+"\c"
+			for chap in splitChap[1:]:
+				chap_num = int(re.search(chapter_num_pattern,chap).group(1))
+				this_chapter = {'ChapterNumber':chap_num,'Verses':[]}
+				splitVerse = chap.split('\\v')
+				chap_headers = splitVerse[0]
+				for verse in splitVerse[1:]:
+					verse_num = int(re.search(verse_num_pattern,verse).group(1))
+					verse_full_text = verse
+					verse_full_text = verse_full_text.split('\n')[0].strip()
+					verse_full_text = ' '.join(verse_full_text.split(' ')[1:])
+					verse_full_text =  re.sub(cross_ref_pattern,'',verse_full_text)
+
+
+					clean_text = ''
+					for char in verse_full_text:
+						if char not in non_letters:
+							clean_text += char
+					clean_text = clean_text.strip().split(' ')
+
+					this_chapter['Verses'].append({'VerseNumber':verse_num,'Text':clean_text})
+				this_book['Chapters'].append(this_chapter)
+			createDBEntry_BibleWord(this_book,tablename)
+			# break
 
 
 def parse_ULB_files_with_Usfm_and_text(path,tablename):
@@ -606,7 +675,7 @@ def parse_ULB_usfm_files_to_BibleWord(path,tablename):
 			this_book['Chapters'].append(this_chapter)
 		createDBEntry_BibleWord(this_book, tablename)
 		# print(this_book)
-		# break
+		break
 
 
 
@@ -614,7 +683,7 @@ def parse_ULB_usfm_files_to_BibleWord(path,tablename):
 # parse_UGNT_files("ugnt/ugnt 2","Grk_UGNT2_BibleWord")
 # parse_UGNT_files("ugnt/ugnt 4","Grk_UGNT4_BibleWord")
 
-parse_UHB_files("../UHB",'Heb_UHB_BibleWord')
+# parse_UHB_files("../UHB",'Heb_UHB_BibleWord')
 
 
 # parse_files_with_Usfm_markers("usfm_files/Assamese Stage 5","Asm_5_Text")
@@ -633,3 +702,6 @@ parse_UHB_files("../UHB",'Heb_UHB_BibleWord')
 # parse_ULB_usfm_files_to_BibleWord('../en_ulb/NT','Eng_ULB_BibleWord')
 
 # parse_ULB_files_with_Usfm_and_text('../en_ulb/NT','Eng_ULB_Text')
+
+parse_files_with_Usfm_and_Text('../../Bibles/Bible NT_OT partial/Hindi Bible/OT/Revised stage 3','Hin_IRV3_OT_Text')
+# parse_files_for_BibleWord('../../Bibles/Bible NT_OT partial/Hindi Bible/OT/Revised stage 3','Hin_IRV3_OT_BibleWord')
