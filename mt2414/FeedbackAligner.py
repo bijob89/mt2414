@@ -123,6 +123,8 @@ class FeedbackAligner:
 				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],lexical_info))
 				count_trg += 1
 				count_eng += 1
+			elif eng_word_list[count_eng][0] == None:
+				count_eng +=1
 			elif (trg_word_list[count_trg][1] < eng_word_list[count_eng][0]):
 				lexical_info = {}
 				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],lexical_info))
@@ -208,28 +210,37 @@ if __name__ == '__main__':
 	connection =  pymysql.connect(host="localhost",    # your host, usually localhost
 	                     user="root",         # your username
 	                     password="password",  # your password
-	                     # database="itl_db",
 	                     database = "AutographaMT_Staging",
 	                     charset='utf8mb4')
 
 	# connection =  pymysql.connect(host="103.196.222.37",    # your host, usually localhost
 	#                     user="bcs_vo_owner",         # your username
 	#                     password="bcs@0pen",  # your password
-	#                     # database="bcs_vachan_engine_test",
-	#                     database="bcs_vachan_engine_open",
+	#                     database="bcs_vachan_engine_test",
+	#                     # database="bcs_vachan_engine_open",
 	#                     port=13306,
 	#                     charset='utf8mb4')
+
+	# digital ocean 
+	# connection =  pymysql.connect(host="159.89.167.64",    # your host, usually localhost
+	#                     user="test_user",         # your username
+	#                     password="staging&2414",  # your password
+	#                     database="AutographaMTStaging",
+	#                     # database="bcs_vachan_engine_open",
+	#                     port=3306,
+	#                     charset='utf8mb4')
+
 		
 
 	# obj = FeedbackAligner(connection,'Hin','Hin_4_BibleWord','Grk','Grk_UGNT4_BibleWord','Hin_4_Grk_UGNT4_Alignment')
-	obj = FeedbackAligner(connection,'Hin','Hin_IRV4_OT_BibleWord','Heb','Heb_UHB_BibleWord','Hin_IRV4_Heb_UHB_Alignment')
+	obj = FeedbackAligner(connection,'Hin','Hin_IRV3_OT_BibleWord','Heb','Heb_UHB_BibleWord','Hin_IRV3_Heb_UHB_Alignment')
 
 	start = time.clock()
 	
 	#obj.on_approve_feedback([("2424 5547","यीशु मसीह"),("5207","सन्तान"),("5257 5547","मसीह . सेवक")])
 
 	# src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options, eng_word_list = obj.fetch_alignment(23146)
-	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options, eng_word_list = obj.fetch_alignment(10,OT=True)
+	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options, eng_word_list = obj.fetch_alignment(23090,OT=True)
 	print("src_word_list:"+str(src_word_list))
 	print("\n")
 	print("trg_word_list:"+str(trg_word_list))
