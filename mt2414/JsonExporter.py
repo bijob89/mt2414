@@ -3,20 +3,18 @@ import json
 
 class JsonExporter:
 
-    def __init__(self, db, src, sVer, trg, tVer, bookcode, book, tablename, usfmFlag):
+    def __init__(self, db, src_bible_words_table, trg_bible_words_table, bookcode, book, tablename, usfmFlag):
         self.db = db.cursor()
-        self.src = src
-        self.trg = trg
-        self.sVer = sVer
-        self.tVer = tVer
+        self.src, self.sVer = src_bible_words_table.split("_")[0:2]
+        self.trg, self.tVer = trg_bible_words_table.split("_")[0:2]
         self.tablename = tablename
-        self.src_bible_words_table = '%s_%s_BibleWord' %(self.src.capitalize(), self.sVer.upper())
-        self.trg_bible_words_table = '%s_%s_BibleWord' %(self.trg.capitalize(), self.tVer.upper())
+        self.src_bible_words_table = src_bible_words_table
+        self.trg_bible_words_table = trg_bible_words_table
         self.src_text_table = '%s_%s_Text' %(self.src.capitalize(), self.sVer.upper())
         self.grk_table = 'Grk_Eng_Aligned_Lexicon'
         self.book = book
         self.bc = int(bookcode)
-        self.usfmFlag = usfmFlag
+        self.usfmFlag = None
 
 
     def alignmentarrayelements(self, a_list):

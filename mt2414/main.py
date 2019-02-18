@@ -58,6 +58,7 @@ mysql_port = int(os.environ.get("MTV2_PORT", '3306'))
 mysql_user = os.environ.get("MTV2_USER", "mysql")
 mysql_password = os.environ.get("MTV2_PASSWORD", "secret")
 mysql_database = os.environ.get("MTV2_DATABASE", "postgres")
+system_email = os.environ.get("MT_EMAIL", "autographamt@gmail.com")
 
 
 def connect_db():
@@ -65,8 +66,7 @@ def connect_db():
     Opens a connection with MySQL Database
     """
     if not hasattr(g, 'db'):
-        # g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
-        g.db = pymysql.connect(host='localhost',database='new_structure', user='root', password='11111111', charset='utf8mb4')
+        g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
     return g.db
 
 
@@ -87,7 +87,7 @@ def getBibleBookIds():
     bookname = {}
     connection  = connect_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT * FROM Bible_Book_Lookup")
+    cursor.execute("SELECT * FROM Bible_Book_Lookup Order by ID")
     rst = cursor.fetchall()
     for item in rst:
         bookname[item[1]] = str(item[0])
@@ -1294,12 +1294,18 @@ def getLid(bcv):
     return lid
 
 def generatePositionalTextList(value):
+    if not value:
+        textObj = {
+            "text":[]
+        }
+        return textObj
     text_list = ['' for i in range(len(value))]
     strongsList = ["" for i in range(len(value))]
     textObj = {}
     if type(value) == dict:
         for ky in value.keys():
-            text_list[int(ky) - 1] = value[ky]
+            if ky:
+                text_list[int(ky) - 1] = value[ky]
     else:
         if len(value[0]) > 2:
             for item in value:
@@ -1309,7 +1315,8 @@ def generatePositionalTextList(value):
         else:
             for item in value:
                 index = item[0]
-                text_list[int(index) - 1] = item[1]
+                if index:
+                    text_list[int(index) - 1] = item[1]
     textObj = {
         "text": text_list
     }
@@ -1318,11 +1325,18 @@ def generatePositionalTextList(value):
     return textObj
 
 
-def getTableName(srclang, trglang):
+def getTableNames(srclang, trglang):
     src, sVer = srclang.split('-')
     trg, tVer = trglang.split('-')
-    tablename = '%s_%s_%s_%s_Alignment' %(src.capitalize(),sVer.upper(), trg.capitalize(), tVer.upper())
-    return tablename
+    if trg.lower() == 'heb':
+        srcBibleWord = "%s_IRV3_OT_BibleWord" %(src.capitalize())
+        trgBibleWord = "Heb_UHB_BibleWord"
+        tablename = '%s_IRV3_%s_%s_Alignment' %(src.capitalize(), trg.capitalize(), tVer.upper())
+    else:
+        srcBibleWord = "%s_%s_BibleWord" %(src.capitalize(), sVer.upper())
+        trgBibleWord = "Grk_UGNT_BibleWord"
+        tablename = '%s_%s_%s_%s_Alignment' %(src.capitalize(), sVer.upper(), trg.capitalize(), tVer.upper())
+    return tablename, srcBibleWord, trgBibleWord
 
 def getFromBibleWords(field, lid, tablename):
     connection = connect_db()
@@ -1338,57 +1352,129 @@ def getFromBibleWords(field, lid, tablename):
 def generateLexicanData(lidList):
     connection = connect_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT LID, Position, Strongs, GreekWord, Transliteration, \
-    EnglishULB_NASB_Lex_Combined, Pronounciation, Definition FROM Grk_Eng_Aligned_Lexicon WHERE LID in (" + str(lidList)[1:-1] + ")")
+    lid = lidList[0]
+    if lid < 23146:
+        command = "SELECT LID, Position, Strongs, HebrewWord, Transliteration, EnglishKJV, Pronounciation, \
+        Definition FROM Heb_UHB_Eng_KJV_Aligned_Lexicon WHERE LID in (" + str(lidList)[1:-1] + ")"
+    else:
+        command = "SELECT LID, Position, Strongs, GreekWord, Transliteration, \
+    EnglishULB_NASB_Lex_Combined, Pronounciation, Definition FROM \
+    Grk_Eng_Aligned_Lexicon WHERE LID in (" + str(lidList)[1:-1] + ")"
+    cursor.execute(command)
     lexicanData = {}
     englishPosDict = {}
     for ld, pos, srn, grkwd, translit, eng, pron, defn in cursor.fetchall():
-        pattern = {
-                    "strongs": srn,
-                    "pronunciation": pron,
-                    "sourceword": grkwd,
-                    "transliteration": translit,
-                    "definition": defn,
-                    "targetword": eng
-                    }
-        lexicanData[srn] = pattern
-        if ld in englishPosDict:
-            temp = englishPosDict[ld]
-            temp[pos] = eng
-            englishPosDict[ld] = temp
-        else:
-            englishPosDict[ld] = {
-                pos:eng
-            }
+        if pos:
+            pattern = {
+                        "strongs": srn,
+                        "pronunciation": pron,
+                        "sourceword": grkwd,
+                        "transliteration": translit,
+                        "definition": defn,
+                        "targetword": eng
+                        }
+            lexicanData[srn] = pattern
+            if ld in englishPosDict:
+                temp = englishPosDict[ld]
+                temp[pos] = eng
+                englishPosDict[ld] = temp
+            else:
+                englishPosDict[ld] = {
+                    pos:eng
+                }
     cursor.close()
     return (lexicanData, englishPosDict)
 
-def generatePositionalPairsAndColorCode(lid, tablename):
+def generatePositionalPairsAndColorCode(lidList, tablename):
     connection = connect_db()
     cursor = connection.cursor()
-    positionalPairs = []
-    colorCode = []
     cursor.execute("SELECT LidTrg, PositionSrc, PositionTrg, Stage FROM \
-    " + tablename + " WHERE LidSrc=%s", (lid,))
-    trgLidDict = {}
+    " + tablename + " WHERE LidSrc in (" + str(lidList)[1:-1] + ")")
+    positionalPairs = {}
     for lt, pSrc, pTrg, st in cursor.fetchall():
-        if lt in trgLidDict:
-            temp = trgLidDict[lt]
+        if lt in positionalPairs:
+            temp = positionalPairs[lt]
             temp["pairs"] = temp["pairs"] + [str(pSrc) + "-" + str(pTrg)]
             temp["colorCode"] = temp["colorCode"] + [st]
-            trgLidDict[lt] = temp
+            positionalPairs[lt] = temp
         else:
-            trgLidDict[lt] = {
+            positionalPairs[lt] = {
                 "pairs":[str(pSrc) + "-" + str(pTrg)],
                 "colorCode": [st]
             }
-    positionalPairs.append(trgLidDict)
     cursor.close()
-    return (positionalPairs, colorCode)
+    return (positionalPairs)
     
+def parsePositionDictToArray(array):
+    CompleteList = []
+    for key in sorted(list(array)):
+        List = generatePositionalTextList(array[key])
+        CompleteList.append(List["text"])
+    return CompleteList
 
-@app.route('/v2/alignments/<bcv>/<srclang>/<trglang>/<status>', methods=["GET"])
-def getalignments(bcv, srclang, trglang, status):
+def parsePositionTupleToList(data):
+    lexiconData = {}
+    srcData = [(j,i) for i, j in data[0]]
+    strongsData = [(item[1], item[0]) for item in data[1]]
+    sourceList = generatePositionalTextList(srcData)
+    strongsList = generatePositionalTextList(strongsData)
+    engData = []
+    targetList = []
+
+    for item in data[1]:
+        targetList.append(item[3]["OriginalWord"])
+        strongs = item[0]
+        pronunciation = item[3]["Pronounciation"]
+        transliteration = item[3]["Transliteration"]
+        targetword = item[3]["OriginalWord"]
+        definition = item[3]["Definition"]
+        sourceword = item[2]
+        engData.append((item[1], item[3]["English"]))
+        if strongs:
+            lexiconData[strongs] = {
+                "strongs": strongs,
+                "pronunciation": pronunciation,
+                "sourceword": sourceword,
+                "transliteration": transliteration,
+                "definition": definition,
+                "targetword": targetword
+                }
+    englishList = generatePositionalTextList(engData)
+    return (sourceList, strongsList, targetList, englishList, lexiconData)
+
+def generatePositionalPairDict(positionalPairs, content, col, lid):
+    if not content:
+        if lid not in positionalPairs:
+            positionalPairs[lid] = {
+                "pairs":[],
+                "colorCode":[]
+            }
+    else:
+        for item in content:
+            trgLid = item[1][0]
+            pair = str(item[0][1]) + "-" + str(item[1][1])
+            if trgLid in positionalPairs:
+                temp = positionalPairs[trgLid]
+                temp["pairs"] = temp["pairs"] + [pair]
+                temp["colorCode"] = temp["colorCode"] + [col]
+                positionalPairs[trgLid] = temp
+            else:
+                positionalPairs[trgLid] = {
+                    "pairs": [pair],
+                    "colorCode":[col]
+                }
+    return positionalPairs
+
+
+def parsePositionalPairs(auto, corrected, replacement, lid):
+    positionalPairs = {}
+    positionalPairs = generatePositionalPairDict(positionalPairs, auto, 0, lid)
+    positionalPairs = generatePositionalPairDict(positionalPairs, corrected, 1, lid)
+    positionalPairs = generatePositionalPairDict(positionalPairs, replacement, 2, lid)
+    return positionalPairs
+
+@app.route('/v2/alignments/<bcv>/<srclang>/<trglang>', methods=["GET"])
+def getalignments(bcv, srclang, trglang):
     '''
     Returns list of positional pairs, list of Hindi words, list of strong numbers for the bcv queried. 
     '''
@@ -1397,112 +1483,50 @@ def getalignments(bcv, srclang, trglang, status):
     
     src, sVer = srclang.split('-')
     trg, tVer = trglang.split('-')
+
     lid = getLid(bcv)
-    tablename = getTableName(srclang, trglang)
 
-    src_bible_words_table = "%s_%s_BibleWord" %(src.capitalize(), sVer.upper())
-    trg_bible_words_table = "%s_%s_BibleWord" %(trg.capitalize(), tVer.upper())
-
-    if src.lower() == "grk":
-        cursor.execute("SELECT Position, Word, Strongs FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
+    startLid = lid - 4
+    if lid < 23146:
+        OT = True
+        lidList = [startLid + i for i in range(9) if (startLid + i) > 0 and (startLid + i) < 23146]
     else:
-        cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
-    sourceContent = generatePositionalTextList(cursor.fetchall())
-    srcTextList = sourceContent["text"]
-    # print(srcTextList)
-    srcStrongsList = None
-    if len(sourceContent) > 1:
-        srcStrongsList = sourceContent["strongs"]
-    cursor.execute("SELECT Position, Word, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (lid,))
-    targetContent = generatePositionalTextList(cursor.fetchall())
-    trgTextList = targetContent["text"]
-    trgStrongsList = targetContent["strongs"]
-    
-    if status == "true":
-        startLid = lid - 4
-        lidList = [startLid + i for i in range(0,9) if (startLid + i) > 23145]
-        lidList = [l for l in lidList if l < 31103]
-        positionalPairs, colorCode = generatePositionalPairsAndColorCode(lid, tablename)
-        
-        strongsDict = {}
-        greekDict = {}
-        cursor.execute("SELECT LID, Position, Strongs, Word FROM Grk_UGNT_BibleWord WHERE LID in (" + str(lidList)[1:-1] + ")")
-        for l, p, s, w in cursor.fetchall():
-            if l in strongsDict:
-                tempStrongs = strongsDict[l]
-                tempGreek = greekDict[l]
-                tempStrongs[p] = s
-                tempGreek[p] = w
-                strongsDict[l] = tempStrongs
-                greekDict[l] = tempGreek
-            else:
-                strongsDict[l] = {
-                    p:s
-                }
-                greekDict[l] = {
-                    p: w
-                }
-        lexicanData, englishPosDict = generateLexicanData(lidList)
+        OT = False
+        lidList = [startLid + i for i in range(9) if (startLid + i) > 23145 and (startLid + i) < 31102]
+    tablenames = getTableNames(srclang, trglang)
+    alignmentTableName, src_bible_words_table, trg_bible_words_table = tablenames
 
-        strongsCompleteList = []
-        for key in sorted(list(strongsDict)):
-            strongsList = generatePositionalTextList(strongsDict[key])
-            strongsCompleteList.append(strongsList["text"])
-
-        greekCompleteList = []
-        for key in sorted(list(greekDict)):
-            greekList = generatePositionalTextList(greekDict[key])
-            greekCompleteList.append(greekList["text"])
-
-        englishWordsList = []
-        for key in sorted(list(englishPosDict.keys())):
-            englishList = generatePositionalTextList(englishPosDict[key])
-            englishWordsList.append(englishList["text"])
-
-        targetObj = {}
-        for i in range(len(strongsCompleteList)):
-            targetObj[lidList[i]] = {
-                trg + "_text": greekCompleteList[i],
-                "strongs": strongsCompleteList[i],
-                "english": englishWordsList[i]
-            }
-
-        sourceObj = {}
-        sourceObj[lid] = {
-            src + "_text": srcTextList,
+    fb = FeedbackAligner(connection, src, src_bible_words_table, trg, trg_bible_words_table, alignmentTableName)
+    lexiconData = {}
+    sourceObj = {}
+    targetObj = {}
+    positionalPairs = {}
+    for l in lidList:
+        res = fb.fetch_alignment(l, OT)
+        verseData = parsePositionTupleToList(res)
+        sourceObj[l] = {
+            src + "_text": verseData[0]["text"]
         }
-        if srcStrongsList:
-            temp = sourceObj[lid]
-            temp["strongs"] = srcStrongsList
-            sourceObj[lid] = temp
-
-
-        jsonElement = {
-            "lid": lid,
-            "LidList": lidList,
-            "sourceContent": sourceObj,
-            "targetContent": targetObj,
-            "lexicanData": lexicanData,
-            "positionalPairs": positionalPairs
+        targetObj[l] = {
+            trg + "_text": verseData[2],
+            "strongs": verseData[1]["text"],
+            "english": verseData[3]["text"]
         }
-    else:
-        positionalPairs, colorCode = generatePositionalPairsAndColorCode(lid, tablename)
-        lexicanData, englishPosDict = generateLexicanData([lid])
-
-        englishWord = []
-        for key in sorted(list(englishPosDict.keys())):
-            englishWord = generatePositionalTextList(englishPosDict[key])
-
-        jsonElement = {
-            "lid":lid,
-            "colorCode": colorCode,
-            "lexicanData": lexicanData,
-            "sourceContent": srcTextList,
-            "targetContent": trgTextList,
-            "positionalPairs": positionalPairs
-        }
-
-    cursor.close()
+        for key in verseData[4].keys():
+            lexiconData[key] = verseData[4][key]
+        if l == lid:
+            positionalPairs = parsePositionalPairs(res[2], res[3], res[4], lid)
+    lidDict = getLidDict()
+    bcvList = [lidDict[x] for x in lidList]
+    jsonElement = {
+        "lid": lid,
+        "LidList": lidList,
+        "bcvList": bcvList,
+        "sourceContent": sourceObj,
+        "targetContent": targetObj,
+        "lexicanData": lexiconData,
+        "positionalPairs": positionalPairs
+    }
     return jsonify(jsonElement)
 
 def getLidDict():
@@ -1546,31 +1570,9 @@ def getbooks(srclang, trglang):
     '''
     connection = connect_db()
     cursor = connection.cursor()
-    tablename = getTableName(srclang, trglang)
-    cursor.execute("SELECT ID, Book, Chapter, Verse FROM Bcv_LidMap")
-    rst_num = cursor.fetchall()
-    lid_dict = {}
-    for l,b,c,v in rst_num:
-        lid_dict[l] = str(b) + str(c).zfill(3) + str(v).zfill(3)
-    cursor.execute("SELECT DISTINCT(LidSrc) FROM " + tablename + "")
-    rst = cursor.fetchall()
-    if rst != []:
-        lid_list  = []
-        for l in rst:
-            if l[0] not in lid_list:
-                lid_list.append(l[0])
-    else:
-        return 'No Data'
-    bcv_list = lid_to_bcv(lid_list)
-    all_books = []
-    bookname = {v:k for k,v in getBibleBookIds()[0].items()}
-    for item in sorted(bcv_list):
-        bcv = str(item)
-        length = len(bcv)
-        book_code = bcv[-length:-6]
-        book_name = bookname[book_code]
-        if book_name not in all_books:
-            all_books.append(book_name)
+    tablename = getTableNames(srclang)[0]
+    cursor.execute("SELECT Code FROM Bible_Book_Lookup ORDER BY ID")
+    all_books = [book[0] for book in cursor.fetchall()]
     cursor.close()
     return jsonify({"books":all_books})
 
@@ -1622,6 +1624,26 @@ def getversenumbers(bookname, chapternumber):
     cursor.close()
     return jsonify({"verse_numbers": sorted(temp_list)})
 
+def checkUserEditAccess(bcv, srclang, userId, organisation_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT TranslatorRole_id, Books FROM Assignments WHERE Language=%s AND User_id=%s \
+    AND Organisation_id=%s AND TranslatorRole_id != 2", (srclang, userId, organisation_id))
+    userAssignedData = cursor.fetchall()
+    cursor.close()
+    if not userAssignedData:
+        return '{"success":false, "message":"No task has been assigned to you yet."}'
+    books = []
+    for r, b in userAssignedData:
+        if r == 1:
+            books = books + b.split(",")
+            bcvLength = len(str(bcv))
+            bookId = int(str(bcv)[-bcvLength:-6])
+            bibleBookCodesDict = {int(v):k for k,v in getBibleBookIds()[0].items()}
+            bookCode = bibleBookCodesDict[bookId].lower()
+            if bookCode not in books:
+                return '{"success":false, "message":"You don\'t have permission to edit this book"}'
+    return True
 
 @app.route('/v2/alignments', methods=["POST"])
 @check_token
@@ -1634,81 +1656,45 @@ def editalignments():
     bcv = req["bcv"]
     srclang = req["srclang"]
     trglang = req["trglang"]
+    organisation = req["organisation"]
     position_pairs = req["positional_pairs"]
-
     email = request.email
-
     connection = connect_db()
     cursor = connection.cursor()
-
     cursor.execute("SELECT ID FROM Users WHERE Email=%s", (email,))
     userId = cursor.fetchone()[0]
-
-    cursor.execute("SELECT ID FROM Projects WHERE Language=%s", (srclang,))
-    projectId = cursor.fetchone()
-
-    if not projectId:
-        return '{"success":false, "message":"There are no existing projects"}'
-
-    cursor.execute("SELECT Role, Books FROM Assignments WHERE User_id=%s AND Project_id=%s", (userId, projectId))
-    userAssignedData = cursor.fetchall()
-
-    if not userAssignedData:
-        return '{"success":false, "message":"You don\'t have any tasks assigned yet. Contact Administrator"}'
-    else:
-        userAssignedBooks = None
-
-        for r, b in userAssignedData:
-            if r.lower() == 'align':
-                userAssignedBooks = b.split(',')
-
-        if not userAssignedBooks:
-            return '{"success":false, "message":"You don\'t have any alignment tasks \
-assigned yet. Contact Administrator"}'
-        
-        bcvLength = len(str(bcv))
-        bookId = str(bcv)[-bcvLength:-6]
-
-        bibleBookCodesDict = {v:k for k,v in getBibleBookIds()[0].items()}
-
-        bookCode = bibleBookCodesDict[bookId].lower()
-
-        if bookCode not in userAssignedBooks:
-            return '{"success":false, "message":"You don\'t have permission to edit this book"}'
+    cursor.execute("SELECT ID FROM Organisations WHERE Name=%s", (organisation,))
+    organisation_id = cursor.fetchone()[0]
+    tablenames = getTableNames(srclang, trglang)
+    alignmentTableName, src_bible_words_table, trg_bible_words_table = tablenames    
+    access_check = checkUserEditAccess(bcv, srclang, userId, organisation_id)
+    if access_check:
+        srclid = getLid(bcv)
+        src, sVer = srclang.split('-')
+        trg, tVer = trglang.split('-')
+        cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (srclid,))
+        src_text_list = generatePositionalTextList(cursor.fetchall())["text"]
+        final_position_pairs = []
+        for key in position_pairs.keys():
+            cursor.execute("SELECT Position, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (key,))
+            trg_text_list = generatePositionalTextList(cursor.fetchall())["text"]
+            for item in position_pairs[key]:
+                sPos, tPos = item.split("-")
+                sourceWord = src_text_list[int(sPos) - 1]
+                targetWord = trg_text_list[int(tPos) - 1]
+                final_position_pairs.append(((srclid, sPos, sourceWord), (key, tPos, targetWord)))
+        if srclid < 23146:
+            OT = True
         else:
-            lid = getLid(bcv)
-            src, sVer = srclang.split('-')
-            trg, tVer = trglang.split('-')
-            src_bible_words_table = '%s_%s_BibleWord' %(src.capitalize(), sVer.upper())
-            trg_bible_words_table = '%s_%s_BibleWord' %(trg.capitalize(), tVer.upper())
-            cursor.execute("SELECT Position, Word FROM " + src_bible_words_table + " WHERE LID=%s", (lid,))
-            src_text_list = generatePositionalTextList(cursor.fetchall())
-            cursor.execute("SELECT Position, Strongs FROM " + trg_bible_words_table + " WHERE LID=%s", (lid,))
-            trg_text_list = generatePositionalTextList(cursor.fetchall())
-            stage = list(set(position_pairs))
-            final_position_pairs = []
-            # for item in stage:
-            #     split_item = item.split('-')
-            #     src_pos = split_item[0]
-            #     trg_pos = split_item[1]
-            #     if src_pos == '255':
-            #         src_word = None
-            #     else:
-            #         src_word = src_text_list[int(src_pos) - 1]
-            #     if trg_pos == '255':
-            #         trg_word = None
-            #     else:
-            #         trg_word = trg_text_list[int(trg_pos) - 1]
-            for item in position_pairs:
-                sourceWord = src_text_list[int(item["sPos"] - 1)]
-                targetWord = trg_text_list[int(item["tPos"] - 1)]
-                final_position_pairs.append(((item["sourceLid"], item["sPos"], sourceWord), (item["targetLid"], item["tPos"], targetWord)))
-                # final_position_pairs.append(((lid, src_pos, src_word),(lid, trg_pos, trg_word)))
-            fb = FeedbackAligner(connection, src.capitalize(), '4', trg.capitalize(), 'UGNT')
-            fb.save_alignment_full_verse(lid, final_position_pairs, userId, None, 1)
-            connection.commit()
-            cursor.close()
-            return '{"success":true, "message":"Alignment saved successfully"}'
+            OT = False
+
+        fb = FeedbackAligner(connection, src, src_bible_words_table, trg, trg_bible_words_table, alignmentTableName)
+        fb.save_alignment_full_verse(srclid, final_position_pairs, userId, None, 1)
+        connection.commit()
+        cursor.close()
+        return '{"success":true, "message":"Alignment saved successfully"}'
+    else:
+        return '{"success":false, "message":"Contact Admin"}'
 
 
 @app.route("/v2/lexicons/<strong>", methods=["GET"])
@@ -1748,10 +1734,14 @@ def getlexicons(strong):
 def jsonexporter(srclang, trglang, book, usfm_status):
     connection  = connect_db()
     src, sVer = srclang.split('-')
-    trg, tVer = trglang.split('-')
-    tablename = getTableName(srclang, trglang)
     bc = getBibleBookIds()[0][book.upper()]
-    je = JsonExporter(connection, src, sVer, trg, tVer, bc, book, tablename, usfm_status)
+    if int(bc) < 40:
+        trglang = "heb-uhb"
+    trg, tVer = trglang.split('-')
+    tables = getTableNames(srclang, trglang)
+    alignment_table, source_word_table, target_word_table = tables
+    je = JsonExporter(connection, src, sVer, source_word_table, trg, tVer, target_word_table, \
+    bc, book, alignment_table, usfm_status)
     var = je.exportAlignments()
     return var
 
@@ -1794,7 +1784,8 @@ def getLanguageList():
         'tam': 'Tamil',
         'urd': 'Urdu',
         'tel': 'Telugu',
-        'kan': 'Kannada'
+        'kan': 'Kannada',
+        'heb': 'Hebrew'
     }
     return languageList
 
@@ -1834,7 +1825,7 @@ def getStrongsList(srclang, trglang):
     connection = connect_db()
     trg, tVer = trglang.split('-')
     bible_word_table = '%s_%s_BibleWord' %(trg.capitalize(), tVer.upper())
-    alignment_table = getTableName(srclang, trglang)
+    alignment_table = getTableNames(srclang, trglang)[0]
     cursor = connection.cursor()
     cursor.execute("SELECT Distinct(Strongs) From " + bible_word_table)
     strongsList = []
@@ -1870,7 +1861,7 @@ def getStrongsInfo(srclang, trglang, strongsnumber):
     '''
     connection = connect_db()
     cursor = connection.cursor()
-    tablename = getTableName(srclang, trglang)
+    tablename = getTableNames(srclang, trglang)[0]
     cursor.execute("SELECT ID, Book, Chapter, Verse FROM Bcv_LidMap")
     lidDict = {}
     for l,b,c,v in cursor.fetchall():
@@ -1975,8 +1966,7 @@ def updateCheckedStrongs():
     word = req["word"]
     positionData = req["positionData"]
     status = int(req["status"])
-    # wordlist = word.split(" ")
-    tablename = getTableName(srclang, trglang)
+    tablename = getTableNames(srclang, trglang)[0]
     connection = connect_db()
     cursor = connection.cursor()
     lidDict = getLidDict()
@@ -2220,10 +2210,10 @@ def getUserAssignedTasks(email):
     cursor = connection.cursor()
     cursor.execute("SELECT ID FROM Users WHERE Email=%s", (email,))
     user_id = cursor.fetchone()[0]
-    cursor.execute("SELECT a.Role, a.Books, p.Language, o.Name FROM Assignments a \
-    INNER JOIN Projects p ON a.Project_id = p.ID \
-    INNER JOIN Organisations o ON p.Organisation_id = o.ID \
-    AND a.User_id=%s", (user_id))
+    cursor.execute("SELECT t.RoleName, a.Books, a.Language, o.Name From Assignments a \
+    INNER JOIN TranslatorRoles t ON t.ID=a.TranslatorRole_id \
+    INNER JOIN Organisations o ON o.ID=a.Organisation_id \
+    WHERE a.User_id=%s", (user_id,))
     workAssignedToUser = cursor.fetchall()
     WATU = []
     for role, books, project, organisation in workAssignedToUser:
@@ -2285,9 +2275,9 @@ def getProjects():
         connection = connect_db()
         cursor = connection.cursor()
         email = request.email
-        cursor.execute("SELECT p.Language, o.Name FROM Users u INNER JOIN Projects p \
-        on u.Organisation_id=p.Organisation_id INNER JOIN Organisations o \
-        on o.ID=u.Organisation_id WHERE u.Email=%s",(email,))
+        cursor.execute("SELECT a.Language, o.Name FROM Assignments a \
+        INNER JOIN Organisations o ON a.Organisation_id=o.ID \
+        INNER JOIN Users u ON o.ID=u.Organisation_id WHERE u.Email=%s", (email,))
         languages = cursor.fetchall()
         projectsList = {}
         for language, organisation in languages:
@@ -2331,7 +2321,7 @@ def createProjects():
 
 @app.route("/v2/projects/users/<lang>", methods=["GET"])
 @check_token
-def getProjectUsers(lang):
+def getUsersUnderProject(lang):
     '''
     To view users assigned to a specific project
     '''
@@ -2341,17 +2331,16 @@ def getProjectUsers(lang):
         cursor = connection.cursor()
         email = request.email
         cursor.execute("SELECT Organisation_id FROM Users WHERE Email=%s", (email,))
-        organisationID = cursor.fetchone()[0]
-        cursor.execute("SELECT a.Role, a.Books, u.Email FROM Assignments a \
-        INNER JOIN Projects p ON a.Project_id=p.ID \
-        INNER JOIN Organisations o on o.ID = p.Organisation_id \
-        INNER JOIN Users u on u.ID=a.User_id \
-        WHERE p.Language=%s AND o.ID=%s", (lang, organisationID))
+        organisation_id = cursor.fetchone()[0]
+        cursor.execute("SELECT u.Email, t.RoleName, a.Books FROM Assignments a \
+        INNER JOIN Users u ON u.ID=a.User_id \
+        INNER JOIN TranslatorRoles t ON t.ID=a.TranslatorRole_id \
+        WHERE a.Language=%s AND a.Organisation_id=%s", (lang, organisation_id))
         userRoles = cursor.fetchall()
         projectUsersRole = []
         cursor.close()
         if userRoles:
-            for role, book, eMail in userRoles:
+            for eMail, role, book in userRoles:
                 if book.strip() != "":
                     projectUsersRole.append(
                         {
@@ -2363,6 +2352,8 @@ def getProjectUsers(lang):
             return jsonify(projectUsersRole)
         else:
             return '{"success":false, "message":"No Users assigned under this project"}'
+    else:
+        return '{"success":false, "message":"Not authorized to view this resource"}'
 
 
 @app.route("/v2/assignments/<status>", methods=["POST"])
@@ -2371,7 +2362,7 @@ def assignTasks(status):
     '''
     Assigns a task to the specified user.
     '''
-    role = request.role
+    user_role = request.role
     req = request.get_json(True)
     user_email = req["email"]
     lang = req["language"]
@@ -2379,28 +2370,36 @@ def assignTasks(status):
     bookList = req["books"]
     bookList = [bk.lower() for bk in bookList]
     email = request.email
-    if role != 1:
+    if user_role != 1:
         connection = connect_db()
         cursor = connection.cursor()
         cursor.execute("SELECT ID FROM Users WHERE Email=%s", (user_email,))
         user_id = cursor.fetchone()[0]
         cursor.execute("SELECT Organisation_id FROM Users WHERE Email=%s", (email,))
         organisation_id = cursor.fetchone()
-        cursor.execute("SELECT ID FROM Projects WHERE Language=%s AND Organisation_id=%s", (lang.lower(), organisation_id))
-        rst = cursor.fetchone()
-
-        if not rst:
-            return '{"success":false, "message":"No Projects created under this language"}'
+        cursor.execute("SELECT ID FROM TranslatorRoles WHERE RoleName=%s", (role.lower(),))
+        role_id = cursor.fetchone()[0]
+        cursor.close()
+        if role_id == 3:
+            cursor = connection.cursor()
+            books = "all books assigned"
+            cursor.execute("DELETE FROM Assignments WHERE User_id=%s AND Language=%s AND \
+            TranslatorRole_id=%s AND Organisation_id=%s", (user_id, lang, role_id, organisation_id))
+            if status == 'add':
+                cursor.execute("INSERT INTO Assignments (User_id, Language, TranslatorRole_id, Books, Organisation_id) VALUES \
+            (%s, %s, %s, %s, %s)", (user_id, lang, role_id, books, organisation_id))
+            connection.commit()
+            cursor.close()
+            return '{"success":true, "message":"Updated Checker task successful"}'
         else:
-            cursor.execute("SELECT Books FROM Assignments WHERE User_id=%s AND Project_id=%s AND Role=%s"\
-            , (user_id, rst[0], role))
+            cursor = connection.cursor()
+            cursor.execute("SELECT Books FROM Assignments WHERE User_id=%s AND Language=%s AND TranslatorRole_id=%s\
+            AND Organisation_id = %s", (user_id, lang, role_id, organisation_id))
             books_rst = cursor.fetchone()
-
-
             if not books_rst:
                 books = ','.join(bookList)
-                cursor.execute("INSERT INTO Assignments (User_id, Project_id, Role, Books) VALUES \
-                 (%s, %s, %s, %s)", (user_id, rst[0], role, books))
+                cursor.execute("INSERT INTO Assignments (User_id, Language, TranslatorRole_id, Books, Organisation_id) VALUES \
+                (%s, %s, %s, %s, %s)", (user_id, lang, role_id, books, organisation_id))
                 if status == 'delete':
                     return '{"success":false, "message":"Book not assigned yet"}'
             else:
@@ -2413,11 +2412,11 @@ def assignTasks(status):
                         if book in newBooksList:
                             newBooksList.remove(book)
                 books = ','.join(newBooksList)
-                cursor.execute("UPDATE Assignments SET Books=%s WHERE User_id=%s AND Project_id=%s AND Role=%s"\
-                , (books, user_id, rst[0], role))
+                cursor.execute("UPDATE Assignments SET Books=%s WHERE User_id=%s AND Organisation_id=%s AND TranslatorRole_id=%s\
+                AND Language=%s", (books, user_id, organisation_id, role_id, lang))
             connection.commit()
             cursor.close()
-            return '{"success":true, "message":"Update Successful"}'
+            return '{"success":true, "message":"Updated ' + ", ".join(books) +  ' Successful"}'
     else:
         return '{"success":false, "message":"You don\'t have permission to access this resource"}'
 
@@ -2428,7 +2427,7 @@ def generateReport(srclang, trglang):
     languageList = getLanguageList()
     reportDict = {}
     src = srclang.split('-')[0]
-    tablename = getTableName(srclang, trglang)
+    tablename = getTableNames(srclang, trglang)[0]
     autoLids = []
     manualLids = []
     checkedLids = []
@@ -2462,7 +2461,7 @@ def feedbacks():
     useremail = req["email"]
     subject = req["subject"]
     message = req["feedback"]
-    mainEmail = 'bijo.babu@bridgeconn.com'
+    mainEmail = system_email
     headers = {"api-key": sendinblue_key}
     url = "https://api.sendinblue.com/v2.0/email"
     body = '''
@@ -2481,7 +2480,6 @@ def feedbacks():
 @app.route("/v2/users/resetpassword", methods=["POST"])
 @check_token
 def resetuserPassword():
-    # req = request.get_json(True)
     email = request.form["email"]
     role = request.role
     if role != 1:
@@ -2519,3 +2517,4 @@ def resetuserPassword():
     else:
         return '{"success":false, "message":"You don\'t have permission to access this resource"}'
 
+    
