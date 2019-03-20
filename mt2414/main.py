@@ -1326,17 +1326,21 @@ def generatePositionalTextList(value):
 
 
 def getTableNames(srclang, trglang):
+    """
+    Returns alignment table name, source Bible word table name and target Bible word table name
+    """
     src, sVer = srclang.split('-')
     trg, tVer = trglang.split('-')
     if trg.lower() == 'heb':
-        srcBibleWord = "%s_IRV3_OT_BibleWord" %(src.capitalize())
-        trgBibleWord = "Heb_UHB_BibleWord"
-        tablename = '%s_IRV3_%s_%s_Alignment' %(src.capitalize(), trg.capitalize(), tVer.upper())
+        srcBibleWord = "%s_%s_OT_BibleWord" %(src.capitalize(), sVer.upper())
+        trgBibleWord = "%s_%s_BibleWord" %(trg.capitalize(), tVer.upper())
+        tablename = '%s_%s_%s_%s_Alignment' %(src.capitalize(), sVer.upper(), trg.capitalize(), tVer.upper())
     else:
         srcBibleWord = "%s_%s_BibleWord" %(src.capitalize(), sVer.upper())
-        trgBibleWord = "Grk_UGNT_BibleWord"
+        trgBibleWord = "%s_%s_BibleWord" %(trg.capitalize(), tVer.upper())
         tablename = '%s_%s_%s_%s_Alignment' %(src.capitalize(), sVer.upper(), trg.capitalize(), tVer.upper())
     return tablename, srcBibleWord, trgBibleWord
+
 
 def getFromBibleWords(field, lid, tablename):
     connection = connect_db()
@@ -1348,6 +1352,7 @@ def getFromBibleWords(field, lid, tablename):
         bibleWordsList[int(p) - 1] = f
     cursor.close()
     return bibleWordsList
+
 
 def generateLexicanData(lidList):
     connection = connect_db()
@@ -1473,16 +1478,16 @@ def parsePositionalPairs(auto, corrected, replacement, lid):
     positionalPairs = generatePositionalPairDict(positionalPairs, replacement, 2, lid)
     return positionalPairs
 
+
 @app.route('/v2/alignments/<bcv>/<srclang>/<trglang>', methods=["GET"])
 def getalignments(bcv, srclang, trglang):
     '''
     Returns list of positional pairs, list of Hindi words, list of strong numbers for the bcv queried. 
     '''
     connection = connect_db()
-    cursor = connection.cursor()
     
-    src, sVer = srclang.split('-')
-    trg, tVer = trglang.split('-')
+    src = srclang.split('-')[0]
+    trg = trglang.split('-')[0]
 
     lid = getLid(bcv)
 
@@ -1529,6 +1534,7 @@ def getalignments(bcv, srclang, trglang):
     }
     return jsonify(jsonElement)
 
+
 def getLidDict():
     '''
     Generates a Dictionary with lid as key and bcv as value
@@ -1570,11 +1576,19 @@ def getbooks(srclang, trglang):
     '''
     connection = connect_db()
     cursor = connection.cursor()
-    tablename = getTableNames(srclang)[0]
-    cursor.execute("SELECT Code FROM Bible_Book_Lookup ORDER BY ID")
-    all_books = [book[0] for book in cursor.fetchall()]
+    tablename = getTableNames(srclang, trglang)[1]
+    bible_code_dict = {}
+    cursor.execute("SELECT ID, Code FROM Bible_Book_Lookup ORDER BY ID")
+    for i, c in cursor.fetchall():
+        bible_code_dict[i] = c
+
+    lid_dict = getLidDict()
+    cursor.execute("SELECT DISTINCT(LID) FROM " + tablename)
+    lid_list = [x[0] for x in cursor.fetchall()]
+    book_code_list = sorted(list(set([int(lid_dict[l])//1000000 for l in lid_list])))
+    books = [bible_code_dict[bc] for bc in book_code_list]
     cursor.close()
-    return jsonify({"books":all_books})
+    return jsonify({"books":books})
 
 
 @app.route('/v2/alignments/chapternumbers/<bookname>', methods=["GET"])
@@ -1624,6 +1638,7 @@ def getversenumbers(bookname, chapternumber):
     cursor.close()
     return jsonify({"verse_numbers": sorted(temp_list)})
 
+
 def checkUserEditAccess(bcv, srclang, userId, organisation_id):
     connection = connect_db()
     cursor = connection.cursor()
@@ -1644,6 +1659,7 @@ def checkUserEditAccess(bcv, srclang, userId, organisation_id):
             if bookCode not in books:
                 return '{"success":false, "message":"You don\'t have permission to edit this book"}'
     return True
+
 
 @app.route('/v2/alignments', methods=["POST"])
 @check_token
@@ -1680,13 +1696,15 @@ def editalignments():
             trg_text_list = generatePositionalTextList(cursor.fetchall())["text"]
             for item in position_pairs[key]:
                 sPos, tPos = item.split("-")
-                sourceWord = src_text_list[int(sPos) - 1]
-                targetWord = trg_text_list[int(tPos) - 1]
+                if sPos != "255":
+                    sourceWord = src_text_list[int(sPos) - 1]
+                else:
+                    sourceWord = None
+                if tPos != "255":
+                    targetWord = trg_text_list[int(tPos) - 1]
+                else:
+                    targetWord = None
                 final_position_pairs.append(((srclid, sPos, sourceWord), (key, tPos, targetWord)))
-        if srclid < 23146:
-            OT = True
-        else:
-            OT = False
 
         fb = FeedbackAligner(connection, src, src_bible_words_table, trg, trg_bible_words_table, alignmentTableName)
         fb.save_alignment_full_verse(srclid, final_position_pairs, userId, None, 1)
@@ -1733,15 +1751,11 @@ def getlexicons(strong):
 @app.route("/v2/alignments/export/<srclang>/<trglang>/<book>/<usfm_status>", methods=["GET"])
 def jsonexporter(srclang, trglang, book, usfm_status):
     connection  = connect_db()
-    src, sVer = srclang.split('-')
     bc = getBibleBookIds()[0][book.upper()]
-    if int(bc) < 40:
-        trglang = "heb-uhb"
-    trg, tVer = trglang.split('-')
     tables = getTableNames(srclang, trglang)
     alignment_table, source_word_table, target_word_table = tables
-    je = JsonExporter(connection, src, sVer, source_word_table, trg, tVer, target_word_table, \
-    bc, book, alignment_table, usfm_status)
+    je = JsonExporter(connection, source_word_table, target_word_table, bc, book, \
+    alignment_table, usfm_status)
     var = je.exportAlignments()
     return var
 
@@ -1794,7 +1808,7 @@ def getLanguageList():
 def getlanguages():
     connection = connect_db()
     cursor = connection.cursor()
-    cursor.execute("SHOW TABLES LIKE '%_Alignment%'")
+    cursor.execute("SHOW TABLES LIKE '%_Alignment'")
     rst = cursor.fetchall()
     languageList = getLanguageList()
     languageDict = {}
@@ -1804,7 +1818,27 @@ def getlanguages():
         src, sVer = item.split('_')[0:2]
         src = src.lower()
         key = src + '-' + sVer
-        languageDict[key] = languageList[src]
+        languageDict[key] = languageList[src] + " (Version: " + sVer + ")"
+    return jsonify(languageDict)
+
+
+@app.route("/v2/alignments/targetlanguages/<srclang>", methods=["GET"])
+def getTargetLanguagesList(srclang):
+    connection = connect_db()
+    cursor = connection.cursor()
+    src, sVer = srclang.split("-")
+    source_language = "%s_%s" %(src.capitalize(), sVer.upper())
+    cursor.execute("SHOW TABLES LIKE '%" + source_language + "%_Alignment'")
+    rst = cursor.fetchall()
+    languageList = getLanguageList()
+    languageDict = {}
+    for item in rst:
+        tables_split = item[0].split("_")
+        trg = tables_split[2]
+        tVer = tables_split[3]
+        trg = trg.lower()
+        key = trg + "-" + tVer
+        languageDict[key] = languageList[trg] + " (Version: " + tVer +")"
     return jsonify(languageDict)
 
 
@@ -1823,9 +1857,10 @@ def getTranslationWords(srclang, trglang, index):
 @app.route("/v2/alignments/strongs/<srclang>/<trglang>", methods=["GET"])
 def getStrongsList(srclang, trglang):
     connection = connect_db()
-    trg, tVer = trglang.split('-')
-    bible_word_table = '%s_%s_BibleWord' %(trg.capitalize(), tVer.upper())
-    alignment_table = getTableNames(srclang, trglang)[0]
+    tables = getTableNames(srclang, trglang)
+
+    bible_word_table = tables[2]
+    alignment_table = tables[0]
     cursor = connection.cursor()
     cursor.execute("SELECT Distinct(Strongs) From " + bible_word_table)
     strongsList = []
