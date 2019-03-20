@@ -10,8 +10,8 @@ class JsonExporter:
         self.tablename = tablename
         self.src_bible_words_table = src_bible_words_table
         self.trg_bible_words_table = trg_bible_words_table
-        self.src_text_table = '%s_%s_Text' %(self.src.capitalize(), self.sVer.upper())
-        self.grk_table = 'Grk_Eng_Aligned_Lexicon'
+        # self.src_text_table = '%s_%s_Text' %(self.src.capitalize(), self.sVer.upper())
+        # self.grk_table = 'Grk_Eng_Aligned_Lexicon'
         self.book = book
         self.bc = int(bookcode)
         self.usfmFlag = None
@@ -233,17 +233,17 @@ class JsonExporter:
 
         # Fetch Target text
 
-        grk_rst = self.getDataFromDB('LID, Position, GreekWord', self.grk_table)
-        grk_text_dict = self.generateTextDictFromDbData(grk_rst)
+        # grk_rst = self.getDataFromDB('LID, Position, GreekWord', self.grk_table)
+        # grk_text_dict = self.generateTextDictFromDbData(grk_rst)
 
         # Fetch Full Source text
 
-        src_usfm_db_text = self.getDataFromDB('LID, Verse, usfm', self.src_text_table)
-        src_db_text_dict = {}
-        src_db_usfm_text = {}
-        for item in src_usfm_db_text:
-            src_db_text_dict[item[0]] = item[1]
-            src_db_usfm_text[item[0]] = item[2]
+        # src_usfm_db_text = self.getDataFromDB('LID, Verse, usfm', self.src_text_table)
+        # src_db_text_dict = {}
+        # src_db_usfm_text = {}
+        # for item in src_usfm_db_text:
+        #     src_db_text_dict[item[0]] = item[1]
+        #     src_db_usfm_text[item[0]] = item[2]
 
         alignment_dict = self.getPhraseBasedAlignmentData(positional_pairs)
 
@@ -254,16 +254,17 @@ class JsonExporter:
         for item in sorted(alignment_dict.keys()):
             bcv = self.lid_dict[item]
 
-            if item in grk_text_dict:
-                trg_text = grk_text_dict[item].strip()
-            else:
+            if item in generated_trg_text_dict:
                 trg_text = generated_trg_text_dict[item].strip()
+            else:
+                trg_text = ""
 
 
             if item in generated_src_text_dict:
                 src_text = generated_src_text_dict[item].strip()
             else:
-                src_text = src_db_text_dict[item].strip()
+                # src_text = src_db_text_dict[item].strip()
+                src_text = ""
 
 
             alignments = alignment_dict[item]
@@ -279,11 +280,11 @@ class JsonExporter:
             contextId = self.book.upper() + contextId
 
 
-            if self.usfmFlag:
-                usfm_text = src_db_usfm_text[item]
-                j_list2.append([[contextId, trg_text, src_text, usfm_text], [source_list, alignments, verified_list]])
-            else:
-                j_list2.append([[contextId, trg_text, src_text, []], [source_list, alignments, verified_list]])
+            # if self.usfmFlag:
+            #     usfm_text = src_db_usfm_text[item]
+            #     j_list2.append([[contextId, trg_text, src_text, usfm_text], [source_list, alignments, verified_list]])
+            # else:
+            j_list2.append([[contextId, trg_text, src_text, []], [source_list, alignments, verified_list]])
 
 
         j_list = [j_list1] + [j_list2]
