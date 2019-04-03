@@ -53,6 +53,7 @@ postgres_password = os.environ.get("MT2414_POSTGRES_PASSWORD", "secret")
 postgres_database = os.environ.get("MT2414_POSTGRES_DATABASE", "postgres")
 host_api_url = os.environ.get("MT2414_HOST_API_URL")
 host_ui_url = os.environ.get("MT2414_HOST_UI_URL")
+host_aligner_ui_url = os.environ.get("MTV2_HOST_ALIGNER_UI_URL")
 mysql_host = os.environ.get("MTV2_HOST", "localhost")
 mysql_port = int(os.environ.get("MTV2_PORT", '3306'))
 mysql_user = os.environ.get("MTV2_USER", "mysql")
@@ -66,7 +67,7 @@ def connect_db():
     Opens a connection with MySQL Database
     """
     if not hasattr(g, 'db'):
-        g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, port=mysql_port, charset='utf8mb4')
+        g.db = pymysql.connect(host=mysql_host,database=mysql_database, user=mysql_user, password=mysql_password, charset='utf8mb4')
     return g.db
 
 
@@ -77,6 +78,7 @@ def get_db():                                                                   
     if not hasattr(g, 'db1'):
         g.db1 = psycopg2.connect(dbname=postgres_database, user=postgres_user, password=postgres_password, host=postgres_host, port=postgres_port)
     return g.db1
+
 
 def getBibleBookIds():
     '''
@@ -1639,11 +1641,11 @@ def getversenumbers(bookname, chapternumber):
     return jsonify({"verse_numbers": sorted(temp_list)})
 
 
-def checkUserEditAccess(bcv, srclang, userId, organisation_id):
+def checkUserEditAccess(bcv, srclang, trglang, userId, organisation_id):
     connection = connect_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT TranslatorRole_id, Books FROM Assignments WHERE Language=%s AND User_id=%s \
-    AND Organisation_id=%s AND TranslatorRole_id != 2", (srclang, userId, organisation_id))
+    cursor.execute("SELECT TranslatorRole_id, Books FROM Assignments WHERE Source_language=%s AND Target_language=%s \
+    AND User_id=%s AND Organisation_id=%s AND TranslatorRole_id != 2", (srclang, trglang, userId, organisation_id))
     userAssignedData = cursor.fetchall()
     cursor.close()
     if not userAssignedData:
@@ -1683,7 +1685,7 @@ def editalignments():
     organisation_id = cursor.fetchone()[0]
     tablenames = getTableNames(srclang, trglang)
     alignmentTableName, src_bible_words_table, trg_bible_words_table = tablenames    
-    access_check = checkUserEditAccess(bcv, srclang, userId, organisation_id)
+    access_check = checkUserEditAccess(bcv, srclang, trglang, userId, organisation_id)
     if access_check:
         srclid = getLid(bcv)
         src, sVer = srclang.split('-')
@@ -1865,7 +1867,9 @@ def getStrongsList(srclang, trglang):
     cursor.execute("SELECT Distinct(Strongs) From " + bible_word_table)
     strongsList = []
     for item in cursor.fetchall():
-        strongsList.append(item[0])
+        strongs = item[0]
+        if strongs:
+            strongsList.append(item[0])
     cursor.execute("SELECT Strongs, Stage FROM " + alignment_table + " WHERE Strongs IN (" + str(strongsList)[1:-1] + ")")
     stageDict = {}
     for it in cursor.fetchall():
@@ -2132,7 +2136,7 @@ def verifications(code):
         cursor.execute("UPDATE Users SET Email_verified=true WHERE Email=%s", (email[0],))
         connection.commit()
         cursor.close
-        return '{"success":true, "message":"Email Verified"}'
+        return redirect("https://%s/" % (host_aligner_ui_url))
 
 
 @app.route("/v2/auth", methods=["POST"])
@@ -2245,18 +2249,19 @@ def getUserAssignedTasks(email):
     cursor = connection.cursor()
     cursor.execute("SELECT ID FROM Users WHERE Email=%s", (email,))
     user_id = cursor.fetchone()[0]
-    cursor.execute("SELECT t.RoleName, a.Books, a.Language, o.Name From Assignments a \
+    cursor.execute("SELECT t.RoleName, a.Books, a.Source_language, a.Target_language, o.Name From Assignments a \
     INNER JOIN TranslatorRoles t ON t.ID=a.TranslatorRole_id \
     INNER JOIN Organisations o ON o.ID=a.Organisation_id \
     WHERE a.User_id=%s", (user_id,))
     workAssignedToUser = cursor.fetchall()
     WATU = []
-    for role, books, project, organisation in workAssignedToUser:
+    for role, books, srclang, trglang, organisation in workAssignedToUser:
         WATU.append(
             {
                 "role":role.lower(),
                 "books":books,
-                "project":project,
+                "source_language":srclang,
+                "target_language":trglang,
                 "organisation":organisation
             }
         )
@@ -2310,12 +2315,13 @@ def getProjects():
         connection = connect_db()
         cursor = connection.cursor()
         email = request.email
-        cursor.execute("SELECT a.Language, o.Name FROM Assignments a \
+        cursor.execute("SELECT a.Source_language, a.Target_language, o.Name FROM Assignments a \
         INNER JOIN Organisations o ON a.Organisation_id=o.ID \
         INNER JOIN Users u ON o.ID=u.Organisation_id WHERE u.Email=%s", (email,))
         languages = cursor.fetchall()
         projectsList = {}
-        for language, organisation in languages:
+        for srclang, trglang, organisation in languages:
+            language = srclang + ":" + trglang
             if organisation in projectsList:
                 projectsList[organisation] = projectsList[organisation] + [language]
             else:
@@ -2354,9 +2360,9 @@ def createProjects():
         return '{"success":false, "message":"You don\'t have permission to access this resource"}'
 
 
-@app.route("/v2/projects/users/<lang>", methods=["GET"])
+@app.route("/v2/projects/users/<srclang>/<trglang>", methods=["GET"])
 @check_token
-def getUsersUnderProject(lang):
+def getUsersUnderProject(srclang, trglang):
     '''
     To view users assigned to a specific project
     '''
@@ -2370,7 +2376,8 @@ def getUsersUnderProject(lang):
         cursor.execute("SELECT u.Email, t.RoleName, a.Books FROM Assignments a \
         INNER JOIN Users u ON u.ID=a.User_id \
         INNER JOIN TranslatorRoles t ON t.ID=a.TranslatorRole_id \
-        WHERE a.Language=%s AND a.Organisation_id=%s", (lang, organisation_id))
+        WHERE a.Source_language=%s AND a.Target_language=%s AND a.Organisation_id=%s", \
+        (srclang, trglang, organisation_id))
         userRoles = cursor.fetchall()
         projectUsersRole = []
         cursor.close()
@@ -2400,7 +2407,8 @@ def assignTasks(status):
     user_role = request.role
     req = request.get_json(True)
     user_email = req["email"]
-    lang = req["language"]
+    srclang = req["srclang"]
+    trglang = req["trglang"]
     role = req["role"]
     bookList = req["books"]
     bookList = [bk.lower() for bk in bookList]
@@ -2418,23 +2426,23 @@ def assignTasks(status):
         if role_id == 3:
             cursor = connection.cursor()
             books = "all books assigned"
-            cursor.execute("DELETE FROM Assignments WHERE User_id=%s AND Language=%s AND \
-            TranslatorRole_id=%s AND Organisation_id=%s", (user_id, lang, role_id, organisation_id))
+            cursor.execute("DELETE FROM Assignments WHERE User_id=%s AND Source_language=%s AND Target_language=%s \
+            AND TranslatorRole_id=%s AND Organisation_id=%s", (user_id, srclang, trglang, role_id, organisation_id))
             if status == 'add':
-                cursor.execute("INSERT INTO Assignments (User_id, Language, TranslatorRole_id, Books, Organisation_id) VALUES \
-            (%s, %s, %s, %s, %s)", (user_id, lang, role_id, books, organisation_id))
+                cursor.execute("INSERT INTO Assignments (User_id, Source_language, Target_language, TranslatorRole_id, Books, Organisation_id) VALUES \
+            (%s, %s, %s, %s, %s)", (user_id, srclang, trglang, role_id, books, organisation_id))
             connection.commit()
             cursor.close()
             return '{"success":true, "message":"Updated Checker task successful"}'
         else:
             cursor = connection.cursor()
-            cursor.execute("SELECT Books FROM Assignments WHERE User_id=%s AND Language=%s AND TranslatorRole_id=%s\
-            AND Organisation_id = %s", (user_id, lang, role_id, organisation_id))
+            cursor.execute("SELECT Books FROM Assignments WHERE User_id=%s AND Source_language=%s AND Target_language=%s AND \
+            TranslatorRole_id=%s AND Organisation_id = %s", (user_id, srclang, trglang, role_id, organisation_id))
             books_rst = cursor.fetchone()
             if not books_rst:
                 books = ','.join(bookList)
-                cursor.execute("INSERT INTO Assignments (User_id, Language, TranslatorRole_id, Books, Organisation_id) VALUES \
-                (%s, %s, %s, %s, %s)", (user_id, lang, role_id, books, organisation_id))
+                cursor.execute("INSERT INTO Assignments (User_id, Source_language, Target_language, TranslatorRole_id, Books, Organisation_id) VALUES \
+                (%s, %s, %s, %s, %s, %s)", (user_id, srclang, trglang, role_id, books, organisation_id))
                 if status == 'delete':
                     return '{"success":false, "message":"Book not assigned yet"}'
             else:
@@ -2446,9 +2454,10 @@ def assignTasks(status):
                     for book in bookList:
                         if book in newBooksList:
                             newBooksList.remove(book)
+                newBooksList = [x for x in newBooksList if x != ""]
                 books = ','.join(newBooksList)
                 cursor.execute("UPDATE Assignments SET Books=%s WHERE User_id=%s AND Organisation_id=%s AND TranslatorRole_id=%s\
-                AND Language=%s", (books, user_id, organisation_id, role_id, lang))
+                AND Source_language=%s AND Target_language=%s", (books, user_id, organisation_id, role_id, srclang, trglang))
             connection.commit()
             cursor.close()
             return '{"success":true, "message":"Updated ' + ", ".join(books) +  ' Successful"}'

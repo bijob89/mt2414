@@ -273,7 +273,7 @@ class JsonExporter:
             if stage_dict[item] == 1:
                 verified_list = [True for i in range(len(alignments))]
             else:
-                verified_list = [True for i in range(len(alignments))]
+                verified_list = [False for i in range(len(alignments))]
 
 
             contextId = str(bcv)[-6:]
