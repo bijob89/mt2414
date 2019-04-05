@@ -59,7 +59,7 @@ mysql_port = int(os.environ.get("MTV2_PORT", '3306'))
 mysql_user = os.environ.get("MTV2_USER", "mysql")
 mysql_password = os.environ.get("MTV2_PASSWORD", "secret")
 mysql_database = os.environ.get("MTV2_DATABASE", "postgres")
-system_email = os.environ.get("MT_EMAIL", "autographamt@gmail.com")
+system_email = os.environ.get("MTV2_EMAIL_ID", "autographamt@gmail.com")
 
 
 def connect_db():
@@ -1432,10 +1432,10 @@ def parsePositionTupleToList(data):
         targetList.append(item[3]["OriginalWord"])
         strongs = item[0]
         pronunciation = item[3]["Pronounciation"]
-        transliteration = item[3]["Transliteration"]
-        targetword = item[3]["OriginalWord"]
+        transliteration = item[2]
+        targetword = item[3]["English"]
         definition = item[3]["Definition"]
-        sourceword = item[2]
+        sourceword = item[3]["OriginalWord"]
         engData.append((item[1], item[3]["English"]))
         if strongs:
             lexiconData[strongs] = {
@@ -1640,16 +1640,22 @@ def getversenumbers(bookname, chapternumber):
     cursor.close()
     return jsonify({"verse_numbers": sorted(temp_list)})
 
+def getSuccessStatus(message, status):
+    status_check = {
+        "success":status,
+        "message":message
+    }
+    return status_check
 
 def checkUserEditAccess(bcv, srclang, trglang, userId, organisation_id):
     connection = connect_db()
     cursor = connection.cursor()
     cursor.execute("SELECT TranslatorRole_id, Books FROM Assignments WHERE Source_language=%s AND Target_language=%s \
-    AND User_id=%s AND Organisation_id=%s AND TranslatorRole_id != 2", (srclang, trglang, userId, organisation_id))
+    AND User_id=%s AND Organisation_id=%s AND TranslatorRole_id != 2", (srclang.lower(), trglang.lower(), int(userId), int(organisation_id)))
     userAssignedData = cursor.fetchall()
     cursor.close()
     if not userAssignedData:
-        return '{"success":false, "message":"No task has been assigned to you yet."}'
+        return getSuccessStatus("No task has been assigned to you yet.", False)
     books = []
     for r, b in userAssignedData:
         if r == 1:
@@ -1659,8 +1665,8 @@ def checkUserEditAccess(bcv, srclang, trglang, userId, organisation_id):
             bibleBookCodesDict = {int(v):k for k,v in getBibleBookIds()[0].items()}
             bookCode = bibleBookCodesDict[bookId].lower()
             if bookCode not in books:
-                return '{"success":false, "message":"You don\'t have permission to edit this book"}'
-    return True
+                return getSuccessStatus("You don\'t have permission to edit this book", False)
+    return getSuccessStatus("Successful", True)
 
 
 @app.route('/v2/alignments', methods=["POST"])
@@ -1686,7 +1692,7 @@ def editalignments():
     tablenames = getTableNames(srclang, trglang)
     alignmentTableName, src_bible_words_table, trg_bible_words_table = tablenames    
     access_check = checkUserEditAccess(bcv, srclang, trglang, userId, organisation_id)
-    if access_check:
+    if access_check["success"]:
         srclid = getLid(bcv)
         src, sVer = srclang.split('-')
         trg, tVer = trglang.split('-')
@@ -1714,7 +1720,7 @@ def editalignments():
         cursor.close()
         return '{"success":true, "message":"Alignment saved successfully"}'
     else:
-        return '{"success":false, "message":"Contact Admin"}'
+        return '{"success":false, "message":"%s"}' %(access_check["message"])
 
 
 @app.route("/v2/lexicons/<strong>", methods=["GET"])
@@ -2213,7 +2219,7 @@ def requestOrganisationAcess():
     countryCode = req["country_code"]
     phone = req["phone"]
     userEmail = request.email
-    email = 'bijob89@gmail.com'
+    email = system_email
     headers = {"api-key": sendinblue_key}
     url = "https://api.sendinblue.com/v2.0/email"
     body = '''Hi,<br/><br/>Request to create Orgaisation<br/>
@@ -2323,7 +2329,8 @@ def getProjects():
         for srclang, trglang, organisation in languages:
             language = srclang + ":" + trglang
             if organisation in projectsList:
-                projectsList[organisation] = projectsList[organisation] + [language]
+                if language not in projectsList[organisation]:
+                    projectsList[organisation] = projectsList[organisation] + [language]
             else:
                 projectsList[organisation] = [language]
         cursor.close()
@@ -2407,8 +2414,8 @@ def assignTasks(status):
     user_role = request.role
     req = request.get_json(True)
     user_email = req["email"]
-    srclang = req["srclang"]
-    trglang = req["trglang"]
+    srclang = req["srclang"].lower()
+    trglang = req["trglang"].lower()
     role = req["role"]
     bookList = req["books"]
     bookList = [bk.lower() for bk in bookList]
