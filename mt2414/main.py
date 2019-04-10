@@ -125,7 +125,7 @@ def auth():
     password_hash_new = scrypt.hash(password, password_salt).hex()
     role = rst[2]
     if password_hash == password_hash_new:
-        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1), 'role': role}, jwt_hs256_secret, algorithm='HS256')
+        access_token = jwt.encode({'sub': email, 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1), 'role': role, 'app':'mt'}, jwt_hs256_secret, algorithm='HS256')
         logging.warning('User: \'' + str(email) + '\' logged in successfully')
         return '{"access_token": "%s"}\n' % (access_token.decode('utf-8'),)
     logging.warning('User: \'' + str(email) + '\' login attempt unsuccessful: Incorrect Password')
@@ -269,18 +269,21 @@ def check_token(f):
                 decoded = jwt.decode(token, jwt_hs256_secret, options=options, algorithms=[algorithm], leeway=leeway)
                 request.email = decoded['sub']
                 request.role = decoded['role']
+                request.app = decoded['app']
+            except jwt.exceptions.DecodeError as e:
+                raise TokenError('Invalid token', str(e))
+            if request.app == 'aligner':
                 connection = connect_db()
                 cursor = connection.cursor()
                 cursor.execute("SELECT Token FROM Users WHERE Email=%s", (request.email,))
                 savedToken = cursor.fetchone()[0]
-            except jwt.exceptions.DecodeError as e:
-                raise TokenError('Invalid token', str(e))
-            if token != savedToken:
-                raise TokenError('Invalid Token', 'Non ITL Token')
+                if token != savedToken:
+                    raise TokenError('Invalid Token', 'Non ITL Token')
         else:
             raise TokenError('Invalid header', 'Token contains spaces')
         return f(*args, **kwds)
     return wrapper
+
 
 
 @app.route("/v1/keys", methods=["POST"])
@@ -2182,7 +2185,8 @@ def authenticate():
                         'sub': email,
                         'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1),
                         'role': rst[4],
-                        'firstName':rst[5]
+                        'firstName':rst[5],
+                        'app':'aligner'
                     },
                     jwt_hs256_secret,
                     algorithm='HS256'
