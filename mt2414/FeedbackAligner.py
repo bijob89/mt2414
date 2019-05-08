@@ -8,37 +8,38 @@ import itertools
 import time, json
 import pymysql
 
-from .TW_strongs_ref_lookup import TWs
+from TW_strongs_ref_lookup import TWs
 
 
 class FeedbackAligner:
-	def __init__(self,db,src,src_version,trg,trg_version):
+	def __init__(self,db,src,src_tablename,trg,trg_tablename,alignment_tablename,EngAlignedLexicon_table):
 
 		self.db = db
 		
 		cur = self.db.cursor()
 		
-		self.src_table_name = src+"_"+src_version+"_BibleWord"
-		self.trg_table_name = trg+"_"+trg_version+"_BibleWord"
+		self.src_table_name = src_tablename
+		self.trg_table_name = trg_tablename
 
-		self.alignment_table_name = src+"_"+src_version+"_"+trg+"_"+trg_version+"_Alignment"
+		self.alignment_table_name = alignment_tablename
+		self.lex_table = EngAlignedLexicon_table
 		# self.FeedbackLookup_table_name = src+"_"+trg+"_FeedbackLookup"
 
 		cur.execute("SHOW TABLES LIKE '"+self.src_table_name+"'")
 		if cur.rowcount==0:
 			print("Table not found: "+self.src_table_name)
-			sys.exit(0)
+			sys.exit(1)
 
 
 		cur.execute("SHOW TABLES LIKE '"+self.trg_table_name+"'")
 		if cur.rowcount==0:
 			print("Table not found: "+self.trg_table_name)
-			sys.exit(0)
+			sys.exit(1)
 			
 		cur.execute("SHOW TABLES LIKE '"+self.alignment_table_name+"'")
 		if cur.rowcount==0:
 			print("Table not found: "+self.alignment_table_name)
-			sys.exit(0)
+			sys.exit(1)
 
 
 		
@@ -85,10 +86,16 @@ class FeedbackAligner:
 
 
 
-	def fetch_alignment(self,lid):
+	def fetch_alignment(self,lid,OT=False):
 		cur = self.db.cursor()
 
 		# print(type(lid))
+		if(OT):
+			cur.execute("SELECT EnglishKJV, Position_KJV from "+self.lex_table+" where LID =%s Order by Position",(lid))
+		else:
+			cur.execute("SELECT Word, Position from Eng_ULB_BibleWord where LID = %s Order by Position",(lid))
+		eng_verse_word_list = cur.fetchall()
+
 		cur.execute("SELECT Word, Position FROM "+self.src_table_name+" WHERE LID = %s ORDER BY Position ",(lid))
 		src_word_list = cur.fetchall()
 
@@ -97,7 +104,10 @@ class FeedbackAligner:
 		cur.execute("SELECT Strongs, Position, Word FROM "+self.trg_table_name+" WHERE LID = %s ORDER BY Position ",(lid))
 		trg_word_list = cur.fetchall()
 		
-		cur.execute("SELECT Position, EnglishULB_NASB_Lex_Combined, GreekWord, Transliteration, Pronounciation, Definition FROM Grk_Eng_Aligned_Lexicon WHERE LID = %s ORDER BY Position",(lid))
+		if (OT):
+			cur.execute("SELECT Position, EnglishKJV,HebrewWord, Transliteration,Pronounciation,Definition FROM "+self.lex_table+" WHERE LID=%s ORDER BY Position",(lid))
+		else:
+			cur.execute("SELECT Position, EnglishULB_NASB_Lex_Combined, GreekWord, Transliteration, Pronounciation, Definition FROM "+self.lex_table+" WHERE LID = %s ORDER BY Position",(lid))
 		eng_word_list = cur.fetchall()
 
 		count_trg = 0
@@ -106,14 +116,16 @@ class FeedbackAligner:
 		while count_trg<len(trg_word_list) and count_eng<len(eng_word_list):
 			if(trg_word_list[count_trg][1] == eng_word_list[count_eng][0]):
 				lexical_info = {}
-				lexical_info["EnglishULB_NASB_Lex_Combined"] = eng_word_list[count_eng][1]
-				lexical_info["GreekWord"] = eng_word_list[count_eng][2]
+				lexical_info["English"] = eng_word_list[count_eng][1]
+				lexical_info["OriginalWord"] = eng_word_list[count_eng][2]
 				lexical_info["Transliteration"] = eng_word_list[count_eng][3]
 				lexical_info["Pronounciation"] = eng_word_list[count_eng][4]
 				lexical_info["Definition"] = eng_word_list[count_eng][5]
 				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],lexical_info))
 				count_trg += 1
 				count_eng += 1
+			elif eng_word_list[count_eng][0] == None:
+				count_eng +=1
 			elif (trg_word_list[count_trg][1] < eng_word_list[count_eng][0]):
 				lexical_info = {}
 				trg_word_list_appended.append((trg_word_list[count_trg][0],trg_word_list[count_trg][1],trg_word_list[count_trg][2],lexical_info))
@@ -138,7 +150,7 @@ class FeedbackAligner:
 		corrected_alignments = [ ((row[0],row[2],row[4]),(row[1],row[3],row[5])) for row in fetched_alignments if row[8]!=0]
 		replacement_options = []
 		
-		return list(src_word_list), list(trg_word_list), auto_alignments, corrected_alignments, replacement_options
+		return list(src_word_list), list(trg_word_list), auto_alignments, corrected_alignments, replacement_options, list(eng_verse_word_list)
 	
 
 
@@ -194,48 +206,43 @@ class FeedbackAligner:
 
 
 if __name__ == '__main__':
-	if len(sys.argv)==3:
-		src = sys.argv[1]
-		trg = sys.argv[2]
-
-	else:
-		print("Usage: python3 FeedbackAligner.py src trg\n(src,trg - 3 letter lang codes\n")
-		sys.exit(0)
 
 
-	connection =  pymysql.connect(host="localhost",    # your host, usually localhost
-	                     user="root",         # your username
-	                     password="password",  # your password
-	                     # database="itl_db",
-	                     database = "AutographaMT_Staging",
-	                     charset='utf8mb4')
+	# connection =  pymysql.connect(host="localhost",    # your host, usually localhost
+	#                      user="root",         # your username
+	#                      password="password",  # your password
+	#                      database = "AutographaMT_Staging",
+	#                      charset='utf8mb4')
 
 	# connection =  pymysql.connect(host="103.196.222.37",    # your host, usually localhost
 	#                     user="bcs_vo_owner",         # your username
 	#                     password="bcs@0pen",  # your password
-	#                     # database="bcs_vachan_engine_test",
-	#                     database="bcs_vachan_engine_open",
+	#                     database="bcs_vachan_engine_test",
+	#                     # database="bcs_vachan_engine_open",
 	#                     port=13306,
 	#                     charset='utf8mb4')
+
+	# digital ocean 
+	connection =  pymysql.connect(host="159.89.167.64",    # your host, usually localhost
+	                    user="test_user",         # your username
+	                    password="staging&2414",  # your password
+	                    database="AutographaMTStaging",
+	                    # database="bcs_vachan_engine_open",
+	                    port=3306,
+	                    charset='utf8mb4')
+
 		
-	src_version = "5"
-	trg_version = "UGNT"
-	if src in ["Hin","Mar","Guj","Mal"]:
-		src_version = "4"
-	if trg != 'Grk':
-		if trg in ["Hin","Mar","Guj","Mal"]:
-			trg_version = "4"
-		else:
-			trg_version = "5"
 
-
-	obj = FeedbackAligner(connection,src,src_version,trg,trg_version)
+	obj = FeedbackAligner(connection,'Hin','Hin_4_BibleWord','Grk','Grk_WH_BibleWord','Hin_4_Grk_WH_Alignment','Grk_Eng_Aligned_Lexicon')
+	# obj = FeedbackAligner(connection,'Hin','Hin_4_BibleWord','Grk','Grk_UGNT4_BibleWord','Hin_4_Grk_UGNT4_Alignment','Grk_UGNT4_Eng_Aligned_Lexicon')
+	# obj = FeedbackAligner(connection,'Hin','Hin_IRV3_OT_BibleWord','Heb','Heb_UHB_BibleWord','Hin_IRV3_Heb_UHB_Alignment','Heb_UHB_Eng_KJV_Aligned_Lexicon')
 
 	start = time.clock()
 	
 	#obj.on_approve_feedback([("2424 5547","यीशु मसीह"),("5207","सन्तान"),("5257 5547","मसीह . सेवक")])
 
-	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options = obj.fetch_alignment(23146)
+	src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options, eng_word_list = obj.fetch_alignment(30478)
+	# src_word_list, trg_word_list, auto_alignments, corrected_alignments, replacement_options, eng_word_list = obj.fetch_alignment(23094,OT=True)
 	print("src_word_list:"+str(src_word_list))
 	print("\n")
 	print("trg_word_list:"+str(trg_word_list))
@@ -245,6 +252,8 @@ if __name__ == '__main__':
 	print("corrected_alignments:"+str(corrected_alignments))
 	print("\n")
 	print("replacement_options:"+str(replacement_options))
+	print("\n")
+	print("english_word_list:"+str(eng_word_list))
 
 
 
