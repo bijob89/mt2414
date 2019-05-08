@@ -80,6 +80,14 @@ def get_db():                                                                   
     return g.db1
 
 
+def app_get_db():                                                                      #--------------To open database connection-------------------#
+    """Opens a new database connection if there is none yet for the
+    current application context.
+    """
+    if not hasattr(g, 'db2'):
+        g.db2 = psycopg2.connect(dbname='vachanenginedev', user=postgres_user, password=postgres_password, host=postgres_host, port=postgres_port)
+    return g.db2
+
 def getBibleBookIds():
     '''
     Returns a tuple of two dictionarys of the books of the Bible, bookcode has bible book codes
@@ -2582,4 +2590,92 @@ def resetuserPassword():
     else:
         return '{"success":false, "message":"You don\'t have permission to access this resource"}'
 
-    
+@app.route("/app/languages", methods=["GET"])
+def getLanguagesForApp():
+    connection = app_get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT languagecode, languagename FROM languages")
+    rst = cursor.fetchall()
+    language_dict = {}
+    for langCode, langName in rst:
+        language_dict[langName] = langCode
+    cursor.close()
+    return jsonify(language_dict)
+
+@app.route("/app/contenttype", methods=["GET"])
+def getContentTypeForApp():
+    connection = app_get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT contenttype FROM contenttype")
+    rst = cursor.fetchall()
+    contenttype = [item[0] for item in rst]
+    cursor.close()
+    return jsonify(contenttype)
+
+@app.route("/app/versions", methods=["GET"])
+def getVersionForApp():
+    connection = app_get_db()
+    cursor = connection.cursor()
+    cursor.execute("select v.versioncontentcode, v.versionid, \
+    l.languagename, c.contenttype from versions v inner join languages l on \
+    v.languageid = l.languageid inner join contenttype c on v.contentid = c.contentid")
+    rst = cursor.fetchall()
+    content_details = {}
+    for ver, v_id, lang, content_type in rst:
+        version_content = {
+            ver: {
+                "version_id": v_id
+            }
+        }
+        if content_type in content_details:
+            temp = content_details[content_type]
+            if lang in temp:
+                if ver not in temp:
+                    lang_temp = temp[lang]
+                    lang_temp = version_content
+                    temp[lang] = lang_temp
+            else:
+                temp[lang] = version_content
+            content_details[content_type] = temp
+        else:
+            content_details[content_type] = {
+                lang: version_content
+            }
+    cursor.close()
+    return jsonify(content_details)
+
+@app.route("/app/content/<version_id>", methods=["GET"])
+def getContent(version_id):
+    connection = app_get_db()
+    cursor = connection.cursor()
+    cursor.execute("select tablename from versions where versionid=%s", (version_id,))
+    table = cursor.fetchone()[0]
+    cursor.execute("select bookid, bookcode from biblebookslookup")
+    bible_books_dict = {k:v for k, v in cursor.fetchall()}
+    cursor.execute("SELECT lid, book, chapter, verse FROM bcvlidmap")
+    rst = cursor.fetchall()
+    lid_dict = {}
+    for l,b,c,v in rst:
+        lid_dict[l] = str(b) + str(c).zfill(3) + str(v).zfill(3)
+    cursor.execute("select lid, usfmtext from " + table + " order by lid" )
+    rst = cursor.fetchall()
+    book_content_dict = {}
+    book_content_list = []
+    used_book_code = None
+    i = 1
+    for lid, text in rst:
+        bcv = int(lid_dict[lid])
+        book_code = int(bcv / 1000000)
+        if i == 1:
+            pass
+        else:
+            if book_code != used_book_code:
+                book_name = bible_books_dict[used_book_code]
+                book_content_dict[book_name] = "\n".join(book_content_list)
+                book_content_list = []
+        used_book_code = book_code
+        book_content_list.append(text)
+        i += 1
+    cursor.close()
+    return jsonify(book_content_dict)
+
