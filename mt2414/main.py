@@ -454,7 +454,7 @@ def sources():
 
 
 @app.route("/v1/languagelist", methods=["GET"])       #--------------To fetch the list of languages from the database -------------------#
-@check_token
+# @check_token
 def languagelist():
     connection = get_db()
     cursor = connection.cursor()
@@ -468,7 +468,7 @@ def languagelist():
 
 
 @app.route("/v1/updatelanguagelist", methods=["GET"])                #--------------To update the database with languages from unfoldingword.org------------------#
-@check_token
+# @check_token
 def updatelanguagelist():
     with urllib.request.urlopen("http://td.unfoldingword.org/exports/langnames.json") as url:
         data = json.loads(url.read().decode())
@@ -487,7 +487,7 @@ def updatelanguagelist():
 
 
 @app.route("/v1/get_languages", methods=["POST"])        #-------------------------To find available language and version----------------------#
-@check_token
+# @check_token
 def available_languages():
     connection = get_db()
     cursor = connection.cursor()
@@ -503,28 +503,61 @@ def available_languages():
         cursor.close()
         return json.dumps(language_list)
 
-
-@app.route("/v1/get_books", methods=["POST"])           #-------------------------To find available books and revision number----------------------#
-@check_token
-def available_books():
-    req = request.get_json(True)
-    language = req["language"]
-    version = req["version"]
+@app.route("/v1/getlanguages", methods=["GET"])        #-------------------------To find available language and version----------------------#
+# @check_token
+def getLanguageLists():
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT st.book_name, st.revision_num FROM sources s LEFT JOIN sourcetexts st ON st.source_id = s.id WHERE s.language = %s AND s.version = %s", (language, version))
+    cursor.execute("SELECT id, language, version from sources")
+    rst = cursor.fetchall()
+    # print(rst)
+    if not rst:
+        return '{"success":false, "message":"No sources"}'
+    else:
+        language_dict = {}
+        for Id, language, version in rst:
+            language_item = [{
+                    "id": Id,
+                    "version": version
+                }]
+            if language in language_dict:
+                language_dict[language] = language_dict[language] + language_item
+            else:
+                language_dict[language] = language_item
+        return json.dumps({
+            "languages":language_dict
+        })
+
+@app.route("/v1/books/<language>/<version>", methods=["GET"])           #-------------------------To find available books and revision number----------------------#
+# @check_token
+def available_books(language, version):
+    # req = request.get_json(True)
+    # language = req["language"]
+    # version = req["version"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("SELECT st.book_name FROM sourcetexts st LEFT JOIN sources s ON st.source_id = s.id WHERE s.language = %s AND s.version = %s", (language, version))
     rst = cursor.fetchall()
     book_list = []
     if not rst:
         return '{"success":false, "message":"No books available"}'
     else:
-        for book in range(0, len(rst)):
-            book_list.append(rst[book])
+        for book in rst:
+            book_list.append(book[0])
         cursor.close()
         return json.dumps(book_list)
 
+@app.route("/v1/tokenlist/<language>/<version>/<book>", methods=["GET"])
+def getTokenLists(language, version, book):
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("select c.token from cluster c left join sources s on c.source_id=s.id where c.book_name=%s and s.language=%s and s.version=%s", (book, language, version))
+    rst = cursor.fetchall()
+    tokenList = [item[0] for item in rst]
+    return json.dumps(tokenList)
+
 @app.route("/v1/language", methods=["POST"])                 #-------------------------To find available source language list----------------------#
-@check_token
+# @check_token
 def language():
     connection = get_db()
     cursor = connection.cursor()
@@ -540,7 +573,7 @@ def language():
         return json.dumps(list(language_list))
 
 @app.route("/v1/targetlang", methods=["POST"])                       #-------------------------To find available target_language list----------------------#
-@check_token
+# @check_token
 def targetlang():
     req = request.get_json(True)
     language = req["language"]
@@ -560,7 +593,7 @@ def targetlang():
         return json.dumps(list(targetlang_list))
 
 @app.route("/v1/version", methods=["POST"])                       #-------------------------To find available versions----------------------#
-@check_token
+# @check_token
 def version():
     req = request.get_json(True)
     language = req["language"]
@@ -597,7 +630,7 @@ def revision():
         return json.dumps(list(set(revision_list)))
 
 @app.route("/v1/book", methods=["POST"])                          #-------------------------To find available books----------------------#
-@check_token
+# @check_token
 def book():
     req = request.get_json(True)
     language = req["language"]
@@ -615,6 +648,7 @@ def book():
             book_list.append(rst[0])
         cursor.close()
         return json.dumps(list(book_list))
+        
 
 @app.route("/v1/getbookwiseautotokens", methods=["POST", "GET"], defaults={'excel_status':'true'})
 @app.route("/v1/getbookwiseautotokens/<excel_status>", methods=["POST", "GET"])      #--------------To download tokenwords in an Excel file (bookwise)---------------#
