@@ -556,6 +556,15 @@ def getTokenLists(language, version, book):
     tokenList = [item[0] for item in rst]
     return json.dumps(tokenList)
 
+@app.route("/v1/usfmtexts/<language>/<version>/<book>", methods=["GET"])
+def getUsfmTexts(language, version, book):
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("select st.book_name, st.content from sourcetexts st left join sources s on st.source_id=s.id where st.book_name=%s and s.language=%s and s.version=%s", (book, language, version))
+    rst = cursor.fetchall()
+    usfmText = {k:v for k,v in rst}
+    return json.dumps(usfmText)
+
 @app.route("/v1/language", methods=["POST"])                 #-------------------------To find available source language list----------------------#
 # @check_token
 def language():
