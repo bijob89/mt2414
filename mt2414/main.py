@@ -493,6 +493,7 @@ def available_languages():
     cursor = connection.cursor()
     cursor.execute("SELECT s.language, s.version FROM sources s  LEFT JOIN sourcetexts st ON st.source_id = s.id")
     rst = cursor.fetchall()
+    cursor.close()
     languages = set()
     if not rst:
         return '{"success":false, "message":"No sources"}'
@@ -510,6 +511,7 @@ def getLanguageLists():
     cursor = connection.cursor()
     cursor.execute("SELECT id, language, version from sources")
     rst = cursor.fetchall()
+    cursor.close()
     # print(rst)
     if not rst:
         return '{"success":false, "message":"No sources"}'
@@ -554,6 +556,7 @@ def getTokenLists(language, version, book):
     cursor.execute("select c.token from cluster c left join sources s on c.source_id=s.id where c.book_name=%s and s.language=%s and s.version=%s", (book, language, version))
     rst = cursor.fetchall()
     tokenList = [item[0] for item in rst]
+    cursor.close()
     return json.dumps(tokenList)
 
 @app.route("/v1/usfmtexts/<language>/<version>/<book>", methods=["GET"])
@@ -563,7 +566,48 @@ def getUsfmTexts(language, version, book):
     cursor.execute("select st.book_name, st.content from sourcetexts st left join sources s on st.source_id=s.id where st.book_name=%s and s.language=%s and s.version=%s", (book, language, version))
     rst = cursor.fetchall()
     usfmText = {k:v for k,v in rst}
+    cursor.close()
     return json.dumps(usfmText)
+
+tablenames = {
+            'hin':"Hin_Irv_Bibletext",
+            'mar':"Mar_Irv_Bibletext",
+            'guj':"Guj_Irv_Bibletext",
+            'tel':"Tel_Irv_Bibletext"
+        }
+
+def getConcordanceList(db_data):
+    concordance = []
+    for book, chapter, verse, text in db_data:
+        obj = {
+            "book":book,
+            "chapterNumber":chapter,
+            "verseNumber":verse,
+            "verse": text
+        }
+        concordance.append(obj)
+    return concordance
+
+
+@app.route("/v1/concordances/<lang>/<book>/<token>", methods=["GET"])
+def generateConcordances(lang, book, token):
+    connection = get_db()
+    cursor = connection.cursor()
+    book = book.lower()
+    tablename = tablenames[lang.lower()]
+    cursor.execute("select bb.bookname, l.chapter, l.verse, b.cleantext from " + tablename + " b \
+       left join bcvlidmap l on b.lid=l.lid left join biblebookslookup bb on l.book=bb.bookid \
+           where b.cleantext like '%" + token + "%' and bb.bookcode='" + book +"' order by l.lid")
+    book_concordance = getConcordanceList(cursor.fetchall())
+    cursor.execute("select bb.bookname, l.chapter, l.verse, b.cleantext from " + tablename + " b \
+       left join bcvlidmap l on b.lid=l.lid left join biblebookslookup bb on l.book=bb.bookid \
+           where b.cleantext like '%" + token + "%' and bb.bookcode!='" + book +"' order by l.lid")
+    all_books_concordance = getConcordanceList(cursor.fetchall())
+    return json.dumps({
+        book:book_concordance,
+        "all":all_books_concordance
+    })
+  
 
 @app.route("/v1/language", methods=["POST"])                 #-------------------------To find available source language list----------------------#
 # @check_token
