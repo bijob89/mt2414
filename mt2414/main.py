@@ -51,6 +51,7 @@ postgres_port = os.environ.get("MT2414_POSTGRES_PORT", "5432")
 postgres_user = os.environ.get("MT2414_POSTGRES_USER", "postgres")
 postgres_password = os.environ.get("MT2414_POSTGRES_PASSWORD", "secret")
 postgres_database = os.environ.get("MT2414_POSTGRES_DATABASE", "postgres")
+# postgres_database = os.environ.get("vachanenginedev", "vachanenginedev")
 host_api_url = os.environ.get("MT2414_HOST_API_URL")
 host_ui_url = os.environ.get("MT2414_HOST_UI_URL")
 host_aligner_ui_url = os.environ.get("MTV2_HOST_ALIGNER_UI_URL")
@@ -533,9 +534,6 @@ def getLanguageLists():
 @app.route("/v1/books/<language>/<version>", methods=["GET"])           #-------------------------To find available books and revision number----------------------#
 # @check_token
 def available_books(language, version):
-    # req = request.get_json(True)
-    # language = req["language"]
-    # version = req["version"]
     connection = get_db()
     cursor = connection.cursor()
     cursor.execute("SELECT st.book_name FROM sourcetexts st LEFT JOIN sources s ON st.source_id = s.id WHERE s.language = %s AND s.version = %s", (language, version))
@@ -601,13 +599,70 @@ def generateConcordances(lang, book, token):
     book_concordance = getConcordanceList(cursor.fetchall())
     cursor.execute("select bb.bookname, l.chapter, l.verse, b.cleantext from " + tablename + " b \
        left join bcvlidmap l on b.lid=l.lid left join biblebookslookup bb on l.book=bb.bookid \
-           where b.cleantext like '%" + token + "%' and bb.bookcode!='" + book +"' order by l.lid")
+           where b.cleantext like '%" + token + "%' and bb.bookcode!='" + book +"' order by l.lid \
+               limit 100")
     all_books_concordance = getConcordanceList(cursor.fetchall())
     return json.dumps({
         book:book_concordance,
         "all":all_books_concordance
     })
   
+@app.route("/v1/versiondetails", methods=["GET"])
+def getVersionDetails():
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("select v.versionid, v.versioncontentcode, v.versioncontentdescription, v.year, \
+        v.license, v.lastedition, c.contenttype, l.languagename from versions v left join \
+            contenttype c on v.contentid=c.contentid left join languages l on \
+                v.languageid=l.languageid")
+    rst = cursor.fetchall()
+    version_details = [
+        {
+            "versionid":versionid,
+            "versioncontentdescription":versioncontentdescription,
+            "versioncontentcode":versioncontentcode,
+            "year":year,
+            "license":license,
+            "lastedition":lastedition,
+            "contenttype":contenttype,
+            "languagename":languagename,
+        } for versionid, versioncontentcode, versioncontentdescription, year, license, lastedition, contenttype, languagename in rst
+    ]
+    cursor.close()
+    return json.dumps(version_details)
+
+
+@app.route("/v1/alllanguages", methods=["GET"])
+def getAllLanguages():
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("select languageid, languagename, languagecode from languages")
+    rst = cursor.fetchall()
+    allLanguagesData = [
+        {
+            "languageName": languagename,
+            "languageId":languageid,
+            "languageCode": languagecode
+        } for languageid, languagename, languagecode in rst
+    ]
+    cursor.close()
+    return json.dumps(allLanguagesData)
+
+@app.route("/v1/contentdetails", methods=["GET"])
+def getContentDetails():
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("select contentid, contenttype from contenttype")
+    rst = cursor.fetchall()
+    allContentTypeData = [
+        {
+            "contentId":contentId,
+            "contentType":contentType
+        } for contentId, contentType in rst
+    ]
+    cursor.close()
+    return json.dumps(allContentTypeData)
+
 
 @app.route("/v1/language", methods=["POST"])                 #-------------------------To find available source language list----------------------#
 # @check_token
