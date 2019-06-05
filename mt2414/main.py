@@ -50,8 +50,8 @@ postgres_host = os.environ.get("MT2414_POSTGRES_HOST", "localhost")
 postgres_port = os.environ.get("MT2414_POSTGRES_PORT", "5432")
 postgres_user = os.environ.get("MT2414_POSTGRES_USER", "postgres")
 postgres_password = os.environ.get("MT2414_POSTGRES_PASSWORD", "secret")
-postgres_database = os.environ.get("MT2414_POSTGRES_DATABASE", "postgres")
-# postgres_database = os.environ.get("vachanenginedev", "vachanenginedev")
+# postgres_database = os.environ.get("MT2414_POSTGRES_DATABASE", "postgres")
+postgres_database = os.environ.get("vachan", "vachan")
 host_api_url = os.environ.get("MT2414_HOST_API_URL")
 host_ui_url = os.environ.get("MT2414_HOST_UI_URL")
 host_aligner_ui_url = os.environ.get("MTV2_HOST_ALIGNER_UI_URL")
@@ -116,7 +116,7 @@ def auth():
     est = cursor.fetchone()
     if not est:
         logging.warning('Unregistered user \'%s\' login attempt unsuccessful' % email)
-        return '{"success":false, "message":"Invalid email"}'
+        return '{"success":false, "message":"This email is not registered"}'
     cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s and u.email_verified is True", (email,))
     rst = cursor.fetchone()
     if not rst:
@@ -134,17 +134,19 @@ def auth():
 
 @app.route("/v1/registrations", methods=["POST"])       #-----------------For user registrations-----------------#
 def new_registration():
+    firstName = request.form['firstName']
+    lastName = request.form['lastName']
     email = request.form['email']
     password = request.form['password']
     headers = {"api-key": sendinblue_key}
     url = "https://api.sendinblue.com/v2.0/email"
     verification_code = str(uuid.uuid4()).replace("-", "")
-    body = '''Hi,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
+    body = '''Hello %s,<br/><br/>Thanks for your interest to use the AutographaMT web service. <br/>
     You need to confirm your email by opening this link:
 
     <a href="https://%s/v1/verifications/%s">https://%s/v1/verifications/%s</a>
 
-    <br/><br/>The documentation for accessing the API is available at <a href="https://docs.autographamt.com">https://docs.autographamt.com</a>''' % (host_api_url, verification_code, host_api_url, verification_code)
+    <br/><br/>The documentation for accessing the API is available at <a href="https://docs.autographamt.com">https://docs.autographamt.com</a>''' % (firstName, host_api_url, verification_code, host_api_url, verification_code)
     payload = {
         "to": {email: ""},
         "from": ["noreply@autographamt.in", "Autographa MT"],
@@ -158,13 +160,16 @@ def new_registration():
     cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
     rst = cursor.fetchone()
     if not rst:
-        cursor.execute("INSERT INTO users (email, verification_code, password_hash, password_salt, created_at) VALUES (%s, %s, %s, %s, current_timestamp)", (email, verification_code, password_hash, password_salt))
+        cursor.execute("INSERT INTO users (first_name, last_name, email, \
+            verification_code, password_hash, password_salt, created_at) \
+                VALUES (%s, %s, %s, %s, %s, %s, current_timestamp)", \
+                    (firstName, lastName, email, verification_code, password_hash, password_salt))
         cursor.close()
         connection.commit()
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
-        return '{"success":true, "message":"Verification Email Sent"}'
+        return '{"success":true, "message":"Verification Email has been sent to your email id"}'
     else:
-        return '{"success":false, "message":"Email Already Exists"}'
+        return '{"success":false, "message":"This email has already been Registered, "}'
 
 @app.route("/v1/resetpassword", methods=["POST"])    #-----------------For resetting the password------------------#
 def reset_password():
@@ -505,6 +510,7 @@ def available_languages():
         cursor.close()
         return json.dumps(language_list)
 
+
 @app.route("/v1/getlanguages", methods=["GET"])        #-------------------------To find available language and version----------------------#
 # @check_token
 def getLanguageLists():
@@ -611,10 +617,10 @@ def generateConcordances(lang, book, token):
 def getVersionDetails():
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("select v.versionid, v.versioncontentcode, v.versioncontentdescription, v.year, \
-        v.license, v.lastedition, c.contenttype, l.languagename from versions v left join \
-            contenttype c on v.contentid=c.contentid left join languages l on \
-                v.languageid=l.languageid")
+    cursor.execute("select v.version_id, v.version_content_code, v.version_content_description, v.year, \
+        v.license, v.revision, c.content_type, l.language_name from versions v left join \
+            contenttype c on v.content_id=c.content_id left join languages l on \
+                v.language_id=l.language_id")
     rst = cursor.fetchall()
     version_details = [
         {
@@ -622,7 +628,7 @@ def getVersionDetails():
             "versioncontentdescription":versioncontentdescription,
             "versioncontentcode":versioncontentcode,
             "year":year,
-            "license":license,
+            "revision":license,
             "lastedition":lastedition,
             "contenttype":contenttype,
             "languagename":languagename,
@@ -632,11 +638,11 @@ def getVersionDetails():
     return json.dumps(version_details)
 
 
-@app.route("/v1/alllanguages", methods=["GET"])
+@app.route("/v1/languages", methods=["GET"])
 def getAllLanguages():
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("select languageid, languagename, languagecode from languages")
+    cursor.execute("select language_id, language_name, language_code from languages order by language_name")
     rst = cursor.fetchall()
     allLanguagesData = [
         {
@@ -652,7 +658,7 @@ def getAllLanguages():
 def getContentDetails():
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("select contentid, contenttype from contenttype")
+    cursor.execute("select content_id, content_type from contenttype")
     rst = cursor.fetchall()
     allContentTypeData = [
         {
@@ -662,6 +668,113 @@ def getContentDetails():
     ]
     cursor.close()
     return json.dumps(allContentTypeData)
+
+def parseDataForDBInsert(usfmData):
+    connection = get_db()
+    crossRefPattern = re.compile(r'(\(?(\d+\s)?\S+\s\d+:\d+\,?\)?)')
+    footNotesPattern = re.compile(r'\it(.*)\s?\\f\s?\+.*\\ft\s?(.*)\s?\\f\*\\it\*\*')
+    cursor = connection.cursor()
+    cursor.execute("select lid, book, chapter, verse from bcvlidmap")
+    lidDict = {int(str(b).zfill(3) + str(c).zfill(3) + str(v).zfill(3)):l for l,b,c,v in cursor.fetchall()}
+    cursor.execute("select book_id, book_code from biblebookslookup")
+    bookIdDict = {v.lower():k for k,v in cursor.fetchall()}
+    # print(bookIdDict)
+    bookName = usfmData["metadata"]["id"]["book"].lower()
+    chapterData = usfmData["chapters"]
+    dbInsertData = []
+    for chapter in chapterData:
+        # fullChapterData = 
+        chapterNumber = chapter["header"]["title"]
+        verseData = chapter["verses"]
+        for verse in verseData:
+            verseNumber = verse["number"]
+            verseText = verse["text"]
+            crossRefs = re.sub(crossRefPattern, r'\1', verseText)
+            footNotes = re.sub(footNotesPattern, r'\1', verseText)
+            bcv = int(str(bookIdDict[bookName]).zfill(3) + str(chapterNumber).zfill(3) \
+                 + str(verseNumber).zfill(3))
+            lid = lidDict[bcv]
+            dbInsertData.append((lid, verseText, crossRefs, footNotes))
+    return dbInsertData
+
+def createTableCommand(fields, tablename):
+    command = 'CREATE TABLE %s (%s)' %(tablename, ', '.join(fields))
+    return command
+
+# def insertToVersionsTableCommand(values)
+
+@app.route("/v1/uploadsources", methods=["POST"])
+def uploadSource():
+    req = request.get_json(True)
+    language = req["language"]
+    contentType = req["contentType"]
+    versionContentCode = req["versionContentCode"]
+    versionContentDescription = req["versionContentDescription"]
+    year = req["year"]
+    revision = req["revision"]
+    license = req["license"]
+    wholeUsfmText = req["wholeUsfmText"]
+    parsedUsfmText = req["parsedUsfmText"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("select * from versions v left join languages l on \
+        v.language_id=l.language_id left join contenttype c on v.content_id=c.content_id \
+            where l.language_code=%s and c.content_type=%s and v.version_content_code=%s and \
+                v.version_content_description=%s and v.year=%s and v.revision=%s and \
+                    v.license=%s",(language, contentType, versionContentCode, 
+                        versionContentDescription, year, revision, license))
+    rst = cursor.fetchone()
+    cursor.close()
+    bookName = parsedUsfmText["metadata"]["id"]["book"].lower()
+    print(bookName)
+    if not rst:
+        parsedDbData = parseDataForDBInsert(parsedUsfmText)
+        cleanTableName = "%s_%s_bible_cleaned" %(language.lower(), versionContentCode.lower())
+        usfmTableName = "%s_%s_bible_usfm" %(language.lower(), versionContentCode.lower())
+        cursor = connection.cursor()
+        cursor.execute("select language_id from languages where language_name=%s", (language,))
+        languageId = cursor.fetchone()[0]
+        cursor.execute('select content_id from contenttype where content_type=%s', (contentType,))
+        contentId = cursor.fetchone()[0]
+        cursor.execute("select exists (select * from information_schema.tables where table_name= '" + usfmTableName + "')")
+        tableExists = cursor.fetchone()[0]
+        cursor.close()
+        print("here")
+        print("table", tableExists)
+        if tableExists:
+            cursor = connection.cursor()
+            cursor.execute("select book_name from " + usfmTableName + " where book_name=%s", (bookName,))
+            bookExists = cursor.fetchone()
+            if bookExists:
+                return '{"success":false, "message":"Book %s already inserted into database"}' %(bookName)
+        # if not tableExists:
+        else:
+
+            print('here1')
+            cursor = connection.cursor()
+            create_clean_bible_table_command = createTableCommand(['lid INT NOT NULL', 'verse TEXT', \
+                'cross_reference TEXT', 'foot_notes TEXT'], cleanTableName)
+            create_usfm_bible_table_command = createTableCommand([\
+                'book_name TEXT NOT NULL', 'usfm_text TEXT NOT NULL'], usfmTableName)
+            cursor.execute(create_clean_bible_table_command)
+            cursor.execute(create_usfm_bible_table_command)
+            cursor.execute('insert into versions (version_content_code, version_content_description,\
+             table_name, year, license, revision, content_id, language_id) values \
+                 (%s, %s, %s, %s, %s, %s, %s, %s)', (versionContentCode, versionContentDescription, \
+                     cleanTableName, year, license, revision, contentId, languageId))
+
+        cursor.execute('insert into ' + cleanTableName + ' (lid, verse, cross_reference, foot_notes) values '\
+            + str(parsedDbData)[1:-1])
+        cursor.execute('insert into ' + usfmTableName + ' (book_name, usfm_text) values (%s, %s)', \
+            (bookName, wholeUsfmText))
+        connection.commit()
+        cursor.close()
+        return '{"success":true, "message":"Inserted %s into database"}' %(bookName)
+        # else:
+
+    else:
+        return '{"success":false, "message":"Failed"}'
+
 
 
 @app.route("/v1/language", methods=["POST"])                 #-------------------------To find available source language list----------------------#
