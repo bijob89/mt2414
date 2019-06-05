@@ -537,29 +537,33 @@ def getLanguageLists():
             "languages":language_dict
         })
 
-@app.route("/v1/books/<language>/<version>", methods=["GET"])           #-------------------------To find available books and revision number----------------------#
+@app.route("/v1/books/<versionId>", methods=["GET"])           #-------------------------To find available books and revision number----------------------#
 # @check_token
-def available_books(language, version):
+def available_books(versionId):
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT st.book_name FROM sourcetexts st LEFT JOIN sources s ON st.source_id = s.id WHERE s.language = %s AND s.version = %s", (language, version))
-    rst = cursor.fetchall()
+    cursor.execute("select table_name from versions where version_id=%s", (versionId,))
+    rst = cursor.fetchone()
     book_list = []
     if not rst:
-        return '{"success":false, "message":"No books available"}'
-    else:
-        for book in rst:
-            book_list.append(book[0])
-        cursor.close()
-        return json.dumps(book_list)
+        return '{"success":false, "message":"No data available"}'
+    tablename = '_'.join(rst[0].split('_')[0:3]) + '_usfm'
+    cursor.execute("select book_name from " + tablename)
+    booksResult = cursor.fetchall()
+    for book in booksResult:
+        book_list.append(book[0])
+    cursor.close()
+    return json.dumps(book_list)
 
-@app.route("/v1/tokenlist/<language>/<version>/<book>", methods=["GET"])
-def getTokenLists(language, version, book):
+@app.route("/v1/tokenlist/<versionId>/<book>", methods=["GET"])
+def getTokenLists(versionId, book):
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("select c.token from cluster c left join sources s on c.source_id=s.id where c.book_name=%s and s.language=%s and s.version=%s", (book, language, version))
-    rst = cursor.fetchall()
-    tokenList = [item[0] for item in rst]
+    cursor.execute("select table_name from versions where version_id=%s", (versionId,))
+    rst = cursor.fetchone()
+    tablename = '_'.join(rst[0].split('_')[0:3]) + '_tokens'
+    cursor.execute("select token from " + tablename)
+    tokenList = [item[0] for item in cursor.fetchall()]
     cursor.close()
     return json.dumps(tokenList)
 
@@ -593,19 +597,22 @@ def getConcordanceList(db_data):
     return concordance
 
 
-@app.route("/v1/concordances/<lang>/<book>/<token>", methods=["GET"])
-def generateConcordances(lang, book, token):
+@app.route("/v1/concordances/<versionid>/<book>/<token>", methods=["GET"])
+def generateConcordances(versionid, book, token):
     connection = get_db()
     cursor = connection.cursor()
     book = book.lower()
-    tablename = tablenames[lang.lower()]
-    cursor.execute("select bb.bookname, l.chapter, l.verse, b.cleantext from " + tablename + " b \
-       left join bcvlidmap l on b.lid=l.lid left join biblebookslookup bb on l.book=bb.bookid \
-           where b.cleantext like '%" + token + "%' and bb.bookcode='" + book +"' order by l.lid")
+    # tablename = tablenames[lang.lower()]
+    cursor.execute("select table_name from versions where version_id=%s", (versionid,))
+    tablename = cursor.fetchone()[0]
+    # tablename = "_".join(rst.split('_')[0:3]) + '_'
+    cursor.execute("select bb.book_name, l.chapter, l.verse, b.verse from " + tablename + " b \
+       left join bcvlidmap l on b.lid=l.lid left join biblebookslookup bb on l.book=bb.book_id \
+           where b.verse like '%" + token + "%' and bb.book_code='" + book +"' order by l.lid")
     book_concordance = getConcordanceList(cursor.fetchall())
-    cursor.execute("select bb.bookname, l.chapter, l.verse, b.cleantext from " + tablename + " b \
-       left join bcvlidmap l on b.lid=l.lid left join biblebookslookup bb on l.book=bb.bookid \
-           where b.cleantext like '%" + token + "%' and bb.bookcode!='" + book +"' order by l.lid \
+    cursor.execute("select bb.book_name, l.chapter, l.verse, b.verse from " + tablename + " b \
+       left join bcvlidmap l on b.lid=l.lid left join biblebookslookup bb on l.book=bb.book_id \
+           where b.verse like '%" + token + "%' and bb.book_code!='" + book +"' order by l.lid \
                limit 100")
     all_books_concordance = getConcordanceList(cursor.fetchall())
     return json.dumps({
@@ -620,7 +627,7 @@ def getVersionDetails():
     cursor.execute("select v.version_id, v.version_content_code, v.version_content_description, v.year, \
         v.license, v.revision, c.content_type, l.language_name from versions v left join \
             contenttype c on v.content_id=c.content_id left join languages l on \
-                v.language_id=l.language_id")
+                v.language_id=l.language_id where c.content_type='bible'")
     rst = cursor.fetchall()
     version_details = [
         {
@@ -628,11 +635,11 @@ def getVersionDetails():
             "versioncontentdescription":versioncontentdescription,
             "versioncontentcode":versioncontentcode,
             "year":year,
-            "revision":license,
-            "lastedition":lastedition,
+            "license":license,
+            "revision": revision,
             "contenttype":contenttype,
             "languagename":languagename,
-        } for versionid, versioncontentcode, versioncontentdescription, year, license, lastedition, contenttype, languagename in rst
+        } for versionid, versioncontentcode, versioncontentdescription, year, license, revision, contenttype, languagename in rst
     ]
     cursor.close()
     return json.dumps(version_details)
@@ -669,6 +676,19 @@ def getContentDetails():
     cursor.close()
     return json.dumps(allContentTypeData)
 
+def getTokens(text):
+    crossRefPattern = re.compile(r'(\(?(\d+\s)?\S+\s\d+:\d+\,?\)?)')
+    footNotesPattern = re.compile(r'\it(.*)\s?\\f\s?\+.*\\ft\s?(.*)\s?\\f\*\\it\*\*')
+    content = re.sub(crossRefPattern, '', text)
+    content = re.sub(footNotesPattern, '', content)
+    content = re.sub(r'([!\"#$%&\\\'\(\)\*\+,\.\/:;<=>\?\@\[\]^_`{|\}~\”\“\‘\’।0123456789])',"",content)
+    content = re.sub(r'\n', ' ', content)
+    content = content.strip()
+    tokenSet = set(content.split(' '))
+    # tokenList = list(tokenSet)
+    return tokenSet
+
+
 def parseDataForDBInsert(usfmData):
     connection = get_db()
     crossRefPattern = re.compile(r'(\(?(\d+\s)?\S+\s\d+:\d+\,?\)?)')
@@ -682,6 +702,8 @@ def parseDataForDBInsert(usfmData):
     bookName = usfmData["metadata"]["id"]["book"].lower()
     chapterData = usfmData["chapters"]
     dbInsertData = []
+    verseContent = []
+    bookId = bookIdDict[bookName]
     for chapter in chapterData:
         # fullChapterData = 
         chapterNumber = chapter["header"]["title"]
@@ -691,11 +713,15 @@ def parseDataForDBInsert(usfmData):
             verseText = verse["text"]
             crossRefs = re.sub(crossRefPattern, r'\1', verseText)
             footNotes = re.sub(footNotesPattern, r'\1', verseText)
-            bcv = int(str(bookIdDict[bookName]).zfill(3) + str(chapterNumber).zfill(3) \
+            bcv = int(str(bookId).zfill(3) + str(chapterNumber).zfill(3) \
                  + str(verseNumber).zfill(3))
             lid = lidDict[bcv]
             dbInsertData.append((lid, verseText, crossRefs, footNotes))
-    return dbInsertData
+            verseContent.append(verseText)
+    tokenList = list(getTokens(' '.join(verseContent)))
+    tokenList = [(bookId, token) for token in tokenList]
+    print(tokenList)
+    return (dbInsertData, tokenList)
 
 def createTableCommand(fields, tablename):
     command = 'CREATE TABLE %s (%s)' %(tablename, ', '.join(fields))
@@ -728,9 +754,11 @@ def uploadSource():
     bookName = parsedUsfmText["metadata"]["id"]["book"].lower()
     print(bookName)
     if not rst:
-        parsedDbData = parseDataForDBInsert(parsedUsfmText)
+        parsedDbData, tokenDBData = parseDataForDBInsert(parsedUsfmText)
+        
         cleanTableName = "%s_%s_bible_cleaned" %(language.lower(), versionContentCode.lower())
         usfmTableName = "%s_%s_bible_usfm" %(language.lower(), versionContentCode.lower())
+        tokenTableName = "%s_%s_bible_tokens" %(language.lower(), versionContentCode.lower())
         cursor = connection.cursor()
         cursor.execute("select language_id from languages where language_name=%s", (language,))
         languageId = cursor.fetchone()[0]
@@ -756,8 +784,11 @@ def uploadSource():
                 'cross_reference TEXT', 'foot_notes TEXT'], cleanTableName)
             create_usfm_bible_table_command = createTableCommand([\
                 'book_name TEXT NOT NULL', 'usfm_text TEXT NOT NULL'], usfmTableName)
+            create_token_bible_table_command = createTableCommand(['book_id INT NOT NUll', \
+                'token TEXT NOT NULL'], tokenTableName)
             cursor.execute(create_clean_bible_table_command)
             cursor.execute(create_usfm_bible_table_command)
+            cursor.execute(create_token_bible_table_command)
             cursor.execute('insert into versions (version_content_code, version_content_description,\
              table_name, year, license, revision, content_id, language_id) values \
                  (%s, %s, %s, %s, %s, %s, %s, %s)', (versionContentCode, versionContentDescription, \
@@ -767,6 +798,7 @@ def uploadSource():
             + str(parsedDbData)[1:-1])
         cursor.execute('insert into ' + usfmTableName + ' (book_name, usfm_text) values (%s, %s)', \
             (bookName, wholeUsfmText))
+        cursor.execute('insert into ' + tokenTableName + ' (book_id, token) values ' + str(tokenDBData)[1:-1])
         connection.commit()
         cursor.close()
         return '{"success":true, "message":"Inserted %s into database"}' %(bookName)
@@ -774,6 +806,44 @@ def uploadSource():
 
     else:
         return '{"success":false, "message":"Failed"}'
+
+@app.route("/v1/updatetokentranslations", methods=["POST"])
+def updateTokenTranslations():
+    req = request.get_json(True)
+    token = req["token"]
+    translation = req["translation"]
+    versionId = req["versionid"]
+    targetLanguageId = req["targetLanguageId"]
+    connection = get_db()
+    cursor = connection.cursor()
+    cursor.execute("select language_code from languages where language_id=%s", (targetLanguageId,))
+    targetLanguageCode = cursor.fetchone()[0]
+    cursor.execute("select v.version_content_code, l.language_code from versions v \
+        left join languages l on v.language_id=l.language_id where v.version_id=%s", (versionId,))
+    versionCode, sourceLanguageCode = cursor.fetchone()
+    cursor.execute("select tablename from tokentranslationslookup where version_id=%s and \
+        language_id=%s",(versionId, targetLanguageId))
+    rst = cursor.fetchone()
+    tokenTranslationTableName = "%s_%s_%s_token_translation" %(sourceLanguageCode, \
+            versionCode, targetLanguageCode)
+    if not rst:
+        tokenTranslationTableCommand = createTableCommand(['token TEXT', 'translation TEXT'], \
+            tokenTranslationTableName)
+        cursor.execute(tokenTranslationTableCommand)
+        cursor.execute('insert into tokentranslationslookup (version_id, language_id, table_name) \
+            values (%s,%s,%s)', (versionId, targetLanguageId, tokenTranslationTableName))
+    cursor.execute("select translation from " + tokenTranslationTableName + " where \
+        token=%s", (token,))
+    translation_rst = cursor.fetchone()
+    if not translation_rst:
+        cursor.execute('insert into ' + tokenTranslationTableName + ' (token, translation) \
+            values (%s, %s)', (token, translation))
+    else:
+        cursor.execute('update ' + tokenTranslationTableName + ' set translation=%s \
+            where token=%s', (translation, token))
+    connection.commit()
+    cursor.close()
+    return '{"success":true, "message":"Translation has been updated"}'
 
 
 
