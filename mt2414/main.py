@@ -112,12 +112,12 @@ def auth():
     password = request.form["password"]
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT email FROM users WHERE  email = %s", (email,))
+    cursor.execute("SELECT email_id FROM autographamt_users WHERE  email_id = %s", (email,))
     est = cursor.fetchone()
     if not est:
         logging.warning('Unregistered user \'%s\' login attempt unsuccessful' % email)
         return '{"success":false, "message":"This email is not registered"}'
-    cursor.execute("SELECT u.password_hash, u.password_salt, r.name FROM users u LEFT JOIN roles r ON u.role_id = r.id WHERE u.email = %s and u.email_verified is True", (email,))
+    cursor.execute("SELECT u.password_hash, u.password_salt, r.role_name FROM autographamt_users u LEFT JOIN roles r ON u.role_id = r.role_id WHERE u.email_id = %s and u.verified is True", (email,))
     rst = cursor.fetchone()
     if not rst:
         return '{"success":false, "message":"Email is not Verified"}'
@@ -157,11 +157,11 @@ def new_registration():
     password_salt = str(uuid.uuid4()).replace("-", "")
     password_hash = scrypt.hash(password, password_salt)
     cursor = connection.cursor()
-    cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
+    cursor.execute("SELECT email_id FROM autographamt_users WHERE email_id = %s", (email,))
     rst = cursor.fetchone()
     if not rst:
-        cursor.execute("INSERT INTO users (first_name, last_name, email, \
-            verification_code, password_hash, password_salt, created_at) \
+        cursor.execute("INSERT INTO autographamt_users (first_name, last_name, email_id, \
+            verification_code, password_hash, password_salt, created_at_date) \
                 VALUES (%s, %s, %s, %s, %s, %s, current_timestamp)", \
                     (firstName, lastName, email, verification_code, password_hash, password_salt))
         cursor.close()
@@ -176,7 +176,7 @@ def reset_password():
     email = request.form['email']
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT email from users WHERE email = %s", (email,))
+    cursor.execute("SELECT email_id from autographamt_users WHERE email_id = %s", (email,))
     if not cursor.fetchone():
         return '{"success":false, "message":"Email has not yet been registered"}'
     else:
@@ -196,7 +196,7 @@ def reset_password():
             "subject": "AutographaMT - Password reset verification mail",
             "html": body,
             }
-        cursor.execute("UPDATE users SET verification_code= %s WHERE email = %s", (verification_code, email))
+        cursor.execute("UPDATE autographamt_users SET verification_code= %s WHERE email_id = %s", (verification_code, email))
         cursor.close()
         connection.commit()
         resp = requests.post(url, data=json.dumps(payload), headers=headers)
@@ -208,7 +208,7 @@ def reset_password2():
     password = request.form['password']
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT email FROM users WHERE verification_code = %s AND email_verified = True", (temp_password,))
+    cursor.execute("SELECT email_id FROM autographamt_users WHERE verification_code = %s AND verified = True", (temp_password,))
     rst = cursor.fetchone()
     if not rst:
         return '{"success":false, "message":"Invalid temporary password."}'
@@ -216,7 +216,7 @@ def reset_password2():
         email = rst[0]
         password_salt = str(uuid.uuid4()).replace("-", "")
         password_hash = scrypt.hash(password, password_salt)
-        cursor.execute("UPDATE users SET verification_code = %s, password_hash = %s, password_salt = %s, updated_at = current_timestamp WHERE email = %s", (None, password_hash, password_salt, email))
+        cursor.execute("UPDATE autographamt_users SET verification_code = %s, password_hash = %s, password_salt = %s WHERE email_id = %s", (None, password_hash, password_salt, email))
         cursor.close()
         connection.commit()
         return '{"success":true, "message":"Password has been reset. Login with the new password."}'
@@ -319,9 +319,9 @@ def new_key():
 def new_registration2(code):
     connection = get_db()
     cursor = connection.cursor()
-    cursor.execute("SELECT email FROM users WHERE verification_code = %s AND email_verified = False", (code,))
+    cursor.execute("SELECT email_id FROM autographamt_users WHERE verification_code = %s AND verified = False", (code,))
     if cursor.fetchone():
-        cursor.execute("UPDATE users SET email_verified = True WHERE verification_code = %s", (code,))
+        cursor.execute("UPDATE autographamt_users SET verified = True WHERE verification_code = %s", (code,))
     cursor.close()
     connection.commit()
     return redirect("https://%s/" % (host_ui_url))
@@ -821,7 +821,7 @@ def updateTokenTranslations():
     cursor.execute("select v.version_content_code, l.language_code from versions v \
         left join languages l on v.language_id=l.language_id where v.version_id=%s", (versionId,))
     versionCode, sourceLanguageCode = cursor.fetchone()
-    cursor.execute("select tablename from tokentranslationslookup where version_id=%s and \
+    cursor.execute("select table_name from tokentranslationslookup where version_id=%s and \
         language_id=%s",(versionId, targetLanguageId))
     rst = cursor.fetchone()
     tokenTranslationTableName = "%s_%s_%s_token_translation" %(sourceLanguageCode, \
@@ -843,6 +843,7 @@ def updateTokenTranslations():
             where token=%s', (translation, token))
     connection.commit()
     cursor.close()
+    print('here')
     return '{"success":true, "message":"Translation has been updated"}'
 
 
