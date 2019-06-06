@@ -204,7 +204,7 @@ def reset_password():
 
 @app.route("/v1/forgotpassword", methods=["POST"])    #--------------To set the new password-------------------#
 def reset_password2():
-    temp_password = request.form['temp_password']
+    temp_password = request.form['temporaryPassword']
     password = request.form['password']
     connection = get_db()
     cursor = connection.cursor()
@@ -216,7 +216,7 @@ def reset_password2():
         email = rst[0]
         password_salt = str(uuid.uuid4()).replace("-", "")
         password_hash = scrypt.hash(password, password_salt)
-        cursor.execute("UPDATE autographamt_users SET verification_code = %s, password_hash = %s, password_salt = %s WHERE email_id = %s", (None, password_hash, password_salt, email))
+        cursor.execute("UPDATE autographamt_users SET verification_code = %s, password_hash = %s, password_salt = %s WHERE email_id = %s", (temp_password, password_hash, password_salt, email))
         cursor.close()
         connection.commit()
         return '{"success":true, "message":"Password has been reset. Login with the new password."}'
